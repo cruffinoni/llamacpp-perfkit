@@ -1,0 +1,58 @@
+models:
+  baseline_hf: "ggml-org/gemma-3-1b-it-GGUF"
+  mtp_hf: null
+
+llama:
+  bin_dir: "../llama.cpp/build/bin"
+  preferred_binary: "llama-server"
+  server:
+    host: "127.0.0.1"
+    startup_timeout_seconds: 180
+    shutdown_timeout_seconds: 15
+  extra_args:
+    --temp: 0.6
+    --top-p: 0.95
+    --top-k: 20
+    --presence-penalty: 0.0
+    --min-p: 0.0
+    --n-gpu-layers: 99
+    --split-mode: "none"
+    --parallel: 1
+
+prompt:
+  profiles:
+    - name: "qa_factual"
+      file: "prompts/profiles/qa_factual.txt"
+    - name: "creative_short"
+      file: "prompts/profiles/creative_short.txt"
+
+run:
+  endpoint: "chat"
+  generation_tokens: 64
+  seed: 42
+  min_vram_headroom_gb: 0.5
+  monitor_interval_seconds: 1
+  timeout_seconds: 300
+  cache_prompt: false
+
+budget:
+  mode: "full"
+  max_runs: 2
+  reuse_existing_results: true
+  stop_if_all_remaining_are_risky: true
+
+matrix:
+  n_cpu_moe: [0]
+  context_size: [2048]
+  kv_type: ["q8_0"]
+  batch_size: [256]
+  ubatch_size: [256]
+  mtp:
+    enabled: [false]
+    draft_n_max: [null]
+    spec_type_preference: ["draft-mtp", "mtp"]
+    spec_draft_p_min: [null]
+
+output:
+  logs_dir: "logs"
+  results_dir: "runs"

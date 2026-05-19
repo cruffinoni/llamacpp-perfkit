@@ -1,0 +1,72 @@
+models:
+  baseline_hf: "unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_M"
+  mtp_hf: "unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_M"
+
+llama:
+  bin_dir: "../llama.cpp/autobuild-cuda/bin"
+  preferred_binary: "llama-server"
+  server:
+    host: "127.0.0.1"
+    startup_timeout_seconds: 300
+    shutdown_timeout_seconds: 15
+  extra_args:
+    --temp: 0.6
+    --top-p: 0.95
+    --top-k: 20
+    --presence-penalty: 0.0
+    --min-p: 0.0
+    --n-gpu-layers: 99
+    --split-mode: "none"
+    --parallel: 1
+
+prompt:
+  profiles:
+    - name: "code_python"
+      file: "prompts/profiles/code_python.txt"
+    - name: "code_cpp"
+      file: "prompts/profiles/code_cpp.txt"
+    - name: "long_code_review"
+      file: "prompts/profiles/long_code_review.txt"
+    - name: "long_prefill_8k"
+      file: "prompts/profiles/long_prefill_8k.txt"
+    - name: "long_prefill_16k"
+      file: "prompts/profiles/long_prefill_16k.txt"
+    - name: "long_prefill_32k"
+      file: "prompts/profiles/long_prefill_32k.txt"
+    - name: "long_prefill_48k"
+      file: "prompts/profiles/long_prefill_48k.txt"
+    - name: "long_prefill_60k"
+      file: "prompts/profiles/long_prefill_60k.txt"
+
+run:
+  # chat applies the model chat template through /v1/chat/completions.
+  # Use "completion" only for raw continuation benchmarks.
+  endpoint: "chat"
+  generation_tokens: 192
+  seed: 42
+  min_vram_headroom_gb: 0.5
+  monitor_interval_seconds: 1
+  timeout_seconds: 900
+  cache_prompt: false
+
+budget:
+  mode: "full"
+  max_runs: 0
+  reuse_existing_results: true
+  stop_if_all_remaining_are_risky: true
+
+matrix:
+  n_cpu_moe: [28]
+  context_size: [122880]
+  kv_type: ["q8_0"]
+  batch_size: [512, 1024, 1545]
+  ubatch_size: [512, 1024, 1545]
+  mtp:
+    enabled: [true]
+    draft_n_max: [2] # Value given by Unsloth tutorial, assuming the value is the best-in-class
+    spec_type_preference: ["draft-mtp"]
+    spec_draft_p_min: [0.75]
+
+output:
+  logs_dir: "logs"
+  results_dir: "runs"

@@ -1,0 +1,35 @@
+This is the continuation of the same coding session, and the prompt now needs to feel heavy with accumulated context.
+
+We have already agreed on the basic change shape:
+
+- add five new prompt files
+- register them in both benchmark configs
+- extend the context matrix
+- keep the quick preset from truncating the newly available jobs
+
+What changed since the earlier steps is that I started thinking about how the selection logic behaves once the matrix grows. The planner does not just enumerate profiles; it also factors in MTP support, existing successful rows, and whether prior results are considered safe enough to reuse. That means the prompt should feel like a conversation where someone is steadily narrowing down a real implementation, not brainstorming in the abstract.
+
+I want the thread to include enough concrete detail that a model has to track names, file paths, and small policy decisions. For example:
+
+User: The baseline config still uses the default quick mode and a small run cap.
+Assistant: Increase the cap to cover the expanded set, but keep the list order stable so the first jobs remain the familiar short prompts.
+User: The model-specific preset is full mode, so I do not want to accidentally turn that into a capped quick sweep.
+Assistant: Then leave the mode alone and only align the profile list and context ladder there.
+
+It also helps if the prompt contains a little backtracking, because that is what real coding sessions look like:
+
+User: I thought the matrix change alone would be enough.
+Assistant: It is necessary, but not sufficient, because the quick budget can still slice off later jobs.
+User: Right, so the prompt additions and the cap need to land together.
+Assistant: Exactly. If one lands without the other, the benchmark either misses the new profiles or creates confusing partial output.
+
+The most important thing is tone. This should read like someone sitting in a terminal, checking a config, reading a planner, and adjusting a benchmark harness while carrying the same concern across many turns: make the long-context cases available without breaking the existing shape of the run plan.
+
+By this point the prompt can mention a couple of explicit implementation preferences:
+
+1. Keep the YAML readable and grouped.
+2. Do not introduce schema changes when a file list is enough.
+3. Use the existing config resolution path rather than hardcoding a new lookup.
+4. Treat the long-context suffixes as approximate labels for benchmarking, not as exact token accounting promises.
+
+If the model is asked to answer from this prompt, it should sound like it has remembered the earlier decisions and is now finishing the patch with confidence, but it should still leave room for a small assumption if the repository disagrees.

@@ -1,0 +1,29 @@
+We are in the middle of a debugging session on a Python benchmark tool that plans llama.cpp MoE runs.
+
+The immediate issue is that the quick benchmark mode keeps selecting only the shortest contexts, even after I added a few more prompt profiles. I already confirmed that the config loader reads `prompt.profiles` in order, and I do not want to redesign the planner schema unless there is a real bug.
+
+Please help me do the smallest safe change set:
+
+1. Add five new prompt profiles as plain text files.
+2. Register them in the benchmark configs without removing the existing profiles.
+3. Expand the context matrix so the long-context cases are available to planning.
+4. Make sure the quick-plan cap does not silently drop the new cases.
+
+The codebase is intentionally simple:
+
+- `src/llamacpp_perfkit/planner.py` builds candidate jobs from `prompt_profiles(cfg)` and the `matrix` section.
+- `src/llamacpp_perfkit/benchlib.py` resolves prompt files relative to the repo root.
+- The configs are YAML and should stay easy to diff.
+
+I have one constraint that matters: please do not invent a new prompt format. These profiles should remain one plain-text prompt each, referenced by file path.
+
+To make this concrete, here is the style target for the prompt itself:
+
+User: I added a new benchmark dimension and now the quick plan is too short.
+Assistant: Check whether the cap is applied after deduplication, and whether the profile list changed the job count.
+User: The plan still looks truncated after I extend the matrix.
+Assistant: Then inspect the max-runs logic in the planner and compare it with the mode default.
+
+The actual prompt should feel like a real coding session, not a synthetic spec. It can mention files, commands, and tradeoffs, but it should read like one person is continuing work from an earlier discussion rather than starting from scratch.
+
+When you write the answer, I want the kind of output that would be useful in a terminal-first workflow: concise, direct, and focused on code changes. If you need to assume something, state the assumption explicitly and keep going.

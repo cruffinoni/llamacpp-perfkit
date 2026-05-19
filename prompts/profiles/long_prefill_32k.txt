@@ -1,0 +1,30 @@
+We are still on the benchmark harness task, and now the conversation has enough history that the prompt should feel like the middle of a real working session.
+
+The task is to add long-prefill profiles to the repository and make sure the planning output includes them. I have already reviewed the planner, and the main risk is not syntax. The risk is accidentally changing behavior in a way that makes the quick plan too small or the full plan unexpectedly huge.
+
+Here is the concrete context you can rely on:
+
+- The project uses `typer` for the CLI and YAML configs for presets.
+- Prompt profiles are resolved as files under `prompts/profiles/`.
+- `prompt_profiles(cfg)` preserves order.
+- `planner.make_plan()` uses the matrix dimensions and then caps the selected jobs according to `budget.max_runs`.
+
+The new profiles are supposed to look like successive excerpts from one coding session. I want the thread to start as a short ask, then gradually accumulate more of the conversation, more files, and more constraints. By the time you reach the longest version, it should read like someone is trying to keep a large debugging context alive across many terminal turns.
+
+The session theme can stay anchored on benchmark planning, but it should sound natural. For example:
+
+User: I need to compare several long-context benchmark prompts, but the current matrix only reaches 32k.
+Assistant: Add the new profile files first, then widen the context ladder in the config.
+User: I also do not want quick mode to accidentally drop the new cases.
+Assistant: Then raise the run cap for quick planning and keep the profile order stable so the diff is easy to review.
+
+At this stage the prompt should also capture some of the more boring but realistic details people mention in a terminal session:
+
+1. The repo may have generated output in `results/` and `logs/`, but those directories are not part of the change.
+2. We should not edit documentation files unless explicitly asked.
+3. We should prefer small, explicit dictionary updates instead of restructuring the config format.
+4. If there is a compatibility concern between the example config and the hardware-specific preset, call it out rather than smoothing it over.
+
+The output I want from the model, if this were used in a benchmark, would be code-oriented and practical. It should not wander into generic advice. It should demonstrate that the model can hold a long-running change in working memory while still making a clean incremental edit.
+
+Think of the final prompt file as the point where the session has enough latent detail to stress long prefill, but not so much noise that the actual coding task is obscured.

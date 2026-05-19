@@ -1,0 +1,40 @@
+This is the longest version of the same evolving coding session, and it should feel like the accumulated history of a real terminal-driven change.
+
+The repository is a Python toolkit for benchmarking llama.cpp MoE settings. We have a benchmark example config, a hardware-specific Qwen preset, and a planner that consumes both. The change request is to add five new long-prefill prompt profiles and expose them in planning so that longer context cases can be compared in a consistent ladder.
+
+At this point in the session, several details have already been established:
+
+- the new prompts are plain text files under `prompts/profiles/`
+- their names are `long_prefill_8k`, `long_prefill_16k`, `long_prefill_32k`, `long_prefill_48k`, and `long_prefill_60k`
+- the configs should keep the existing prompt profiles and append the new ones after them
+- the context matrix should include `4096, 8192, 16384, 32768, 49152, 61440`
+- the quick preset should not silently prune the enlarged set
+
+The reason this prompt needs to be long is that the benchmark target is long prefill itself. The model should have to manage a lot of carried-forward context while still producing a precise edit. So the session should keep layering in the kinds of details that accumulate over time:
+
+User: I already checked that the parser accepts the YAML.
+Assistant: Good. Then the remaining work is file creation and config wiring, not schema work.
+User: The long-context profiles should read like one coding session.
+Assistant: Make them share a theme, keep the technical vocabulary consistent, and increase the amount of context and backstory as the suffix grows.
+User: The quick plan was previously capped too tightly.
+Assistant: Raise the cap in the quick preset so the added profiles can actually appear in dry-run planning.
+
+Now add the operational concerns that show up when people are editing benchmark tooling:
+
+1. Do not touch `README.md` or other documentation unless requested.
+2. Do not delete generated results or logs.
+3. Prefer explicit YAML edits over a more elaborate config abstraction.
+4. Keep the example preset and the Qwen preset aligned where they overlap, but respect that one is quick and one is full.
+
+The thread should also carry the kind of practical debugging memory that makes long sessions realistic. For instance, the conversation can note that the planner enumerates profiles before applying the run cap, which is why the profile list and the cap both matter. It can mention that the Qwen preset previously had larger context values, but that the new ladder is intentionally smaller and more uniform so the benchmark run space is easier to reason about.
+
+It is fine for the prompt to be a bit verbose. In fact, it should be verbose enough that the model has to preserve continuity across multiple turns and not just answer from the last line. The right feel is:
+
+- an initial request to add new benchmark inputs
+- a check that the existing planner is not being rewritten unnecessarily
+- a follow-up about keeping configs in sync
+- a note about run cap behavior
+- a reminder that the prompts themselves are supposed to be realistic and mid-to-long
+- a final instruction to make the result terminal-friendly and code-oriented
+
+The end result should read like a human kept working in the same shell session for a long time and only now is asking the model to finish the patch cleanly. If there is any ambiguity, prefer the interpretation that preserves the existing benchmark architecture and only expands the set of available long-context cases.

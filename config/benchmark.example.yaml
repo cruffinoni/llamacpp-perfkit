@@ -1,0 +1,81 @@
+models:
+  baseline_hf: "unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_M"
+  mtp_hf: "unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_M"
+
+llama:
+  bin_dir: "../llama.cpp/build/bin"
+  preferred_binary: "llama-server"
+  server:
+    host: "127.0.0.1"
+    startup_timeout_seconds: 300
+    shutdown_timeout_seconds: 15
+  extra_args:
+    --temp: 0.6
+    --top-p: 0.95
+    --top-k: 20
+    --presence-penalty: 0.0
+    --min-p: 0.0
+    --n-gpu-layers: 99
+    --split-mode: "none"
+    --parallel: 1
+prompt:
+  profiles:
+    - name: "code_python"
+      file: "prompts/profiles/code_python.txt"
+    - name: "code_cpp"
+      file: "prompts/profiles/code_cpp.txt"
+    - name: "explain_concept"
+      file: "prompts/profiles/explain_concept.txt"
+    - name: "summarize"
+      file: "prompts/profiles/summarize.txt"
+    - name: "qa_factual"
+      file: "prompts/profiles/qa_factual.txt"
+    - name: "translation"
+      file: "prompts/profiles/translation.txt"
+    - name: "creative_short"
+      file: "prompts/profiles/creative_short.txt"
+    - name: "stepwise_math"
+      file: "prompts/profiles/stepwise_math.txt"
+    - name: "long_code_review"
+      file: "prompts/profiles/long_code_review.txt"
+    - name: "long_prefill_8k"
+      file: "prompts/profiles/long_prefill_8k.txt"
+    - name: "long_prefill_16k"
+      file: "prompts/profiles/long_prefill_16k.txt"
+    - name: "long_prefill_32k"
+      file: "prompts/profiles/long_prefill_32k.txt"
+    - name: "long_prefill_48k"
+      file: "prompts/profiles/long_prefill_48k.txt"
+    - name: "long_prefill_60k"
+      file: "prompts/profiles/long_prefill_60k.txt"
+
+run:
+  endpoint: "chat"
+  generation_tokens: 192
+  seed: 42
+  min_vram_headroom_gb: 1.5
+  monitor_interval_seconds: 1
+  timeout_seconds: 900
+  cache_prompt: false
+
+budget:
+  mode: "quick" # smoke | quick | focused | full
+  max_runs: 14
+  reuse_existing_results: true
+  stop_if_all_remaining_are_risky: true
+
+matrix:
+  n_cpu_moe: [0, 1, 2, 4, 6, 8, 10, 12, 16, 20, 24, 32]
+  context_size: [4096, 8192, 16384, 32768, 49152, 61440]
+  kv_type: ["q8_0", "turbo3", "turbo4"]
+  batch_size: [1024]
+  ubatch_size: [1024]
+  mtp:
+    enabled: [false, true]
+    draft_n_max: [1, 2, 3, 4]
+    spec_type_preference: ["draft-mtp", "mtp"]
+    spec_draft_p_min: [null, 0.65, 0.75, 0.85]
+
+output:
+  logs_dir: "logs"
+  results_dir: "runs"

@@ -1,0 +1,32 @@
+We are continuing the same benchmark-tool session, and the context is now a little messier because I have already tried one change and do not want it repeated.
+
+Earlier I thought the run cap in quick mode was the only issue, but after reading the planner I noticed the selected job set is built from a Cartesian product of:
+
+- prompt profiles
+- `n_cpu_moe`
+- `context_size`
+- `kv_type`
+- MTP enabled or disabled
+- draft settings when MTP is supported
+
+That means the new long-context profiles do more than just add files. They also increase the candidate set, which makes the cap matter more.
+
+What I need from you now is a careful implementation that keeps the following behavior intact:
+
+1. Existing short prompts still appear first.
+2. The new long prefill prompts are appended after the current profile list.
+3. The example config should not lose its quick-mode usefulness.
+4. The Qwen preset should stay in sync on the profile and matrix dimensions.
+
+I am also seeing a practical concern: the long-context values we want for planning are not the same as the old 64k and 128k-only setup in the model-specific config. We want the smaller ladder because it aligns with the profiles we are about to add and makes the dry-run output easier to read.
+
+If you are reasoning about the file contents, use this as the style target:
+
+User: I want one evolving coding session, but each step should carry more state than the last.
+Assistant: Start with the original bug report, then add the code path you inspected, then the command output that changed your hypothesis.
+User: The final version should feel like I have been copy-pasting from the same terminal session for a while.
+Assistant: In that case, preserve continuity in terminology, keep the same files and variables, and let the thread get denser instead of switching topics.
+
+Please avoid adding notes that sound like documentation. I want the prompts themselves to feel like the raw material a benchmark would feed into a model.
+
+If you need to pick a theme for the thread, choose something with actual coding friction: a planner bug, a config migration, or a mismatch between selection logic and config defaults. The point is to create realistic long-prefill input, not polished tutorial prose.
