@@ -9,7 +9,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Any
 
-from .benchlib import PROJECT_ROOT, filter_rows, fmt_value, get_field, table
+from .benchlib import filter_rows, fmt_value, get_field, table
 from .output import (
     colorize_config_label,
     colorize_delta,
@@ -140,12 +140,11 @@ def add_common_report_args(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--batch-size", type=int)
     parser.add_argument("--ubatch-size", type=int)
     parser.add_argument("--prompt-profile")
-    parser.add_argument("--mtp-mode", choices=["on", "off"])
     parser.add_argument("--n-cpu-moe", type=int)
     parser.add_argument("--status", choices=["success", "failed", "oom", "timeout", "unsupported"])
     parser.add_argument(
         "--sort",
-        choices=["balanced", "latest", "generation_tok_s", "vram_headroom", "peak_vram", "context_size", "mtp_speedup"],
+        choices=["balanced", "latest", "generation_tok_s", "vram_headroom", "peak_vram", "context_size"],
         default="balanced",
     )
     parser.add_argument("--limit", type=int, default=20)
@@ -153,21 +152,10 @@ def add_common_report_args(parser: argparse.ArgumentParser) -> None:
 
 def path_value(value: str) -> Path:
     path = Path(value)
-    return path if path.is_absolute() else PROJECT_ROOT / path
-
-
-def normalize_args(args: Any) -> Any:
-    if getattr(args, "mtp_mode", None) == "on":
-        args.mtp_mode = True
-    elif getattr(args, "mtp_mode", None) == "off":
-        args.mtp_mode = False
-    elif not isinstance(getattr(args, "mtp_mode", None), bool):
-        args.mtp_mode = None
-    return args
+    return path if path.is_absolute() else Path.cwd() / path
 
 
 def load_rows(args: Any) -> list[dict[str, Any]]:
-    args = normalize_args(args)
     source: str = getattr(args, "results", None) or getattr(args, "runs", "runs")  # type: ignore[assignment]
     rows = load_run_rows(path_value(source))
     return filter_rows(rows, args)
@@ -555,7 +543,14 @@ def format_score(summary: MetricSummary) -> str:
     return f"{summary.mean:.3f}" if isinstance(summary.mean, (int, float)) else "-"
 
 
-VARIANT_SUFFIXES = ("-it", "-instruct", "-chat", "-mtp")
+VARIANT_SUFFIXES = ("-it", "-instruct", "-chat")
+
+
+def model_quant(full: str | None) -> str:
+    if not full:
+        return ""
+    parts = full.split(":", 1)
+    return parts[1] if len(parts) > 1 else ""
 
 
 def short_model_name(full: str | None) -> str:
@@ -572,14 +567,21 @@ def short_model_name(full: str | None) -> str:
     return name or full
 
 
+def model_display_name(full: str | None) -> str:
+    name = short_model_name(full)
+    if name == "-":
+        return name
+    quant = model_quant(full)
+    return f"{name}:{quant}" if quant else name
+
+
 def config_label_from_key(key: ServerConfigKey) -> str:
-    mtp = "mtp" if key.mtp_enabled else "base"
     spec = key.spec_type or "-"
     batch = f"b{fmt_value(key.batch_size)}" if key.batch_size is not None else ""
     ubatch = f"u{fmt_value(key.ubatch_size)}" if key.ubatch_size is not None else ""
     sizes = f" {batch}/{ubatch}" if batch or ubatch else ""
-    model = short_model_name(key.model)
-    return f"{model} ctx{fmt_value(key.context_size) if key.context_size is not None else '-'} {key.kv_type or '-'} moe{key.n_cpu_moe if key.n_cpu_moe is not None else '-'} {mtp} {spec}{sizes}"
+    model = model_display_name(key.model)
+    return f"{model} ctx{fmt_value(key.context_size) if key.context_size is not None else '-'} {key.kv_type or '-'} moe{key.n_cpu_moe if key.n_cpu_moe is not None else '-'} spec {spec}{sizes}"
 
 
 def config_label(report: AggregatedServerConfigReport) -> str:
@@ -618,7 +620,7 @@ class TableBuilder:
         if col == "moe":
             return str(key.n_cpu_moe) if key.n_cpu_moe is not None else "-"
         if col == "spec":
-            return key.spec_type or ("mtp" if key.mtp_enabled else "base")
+            return key.spec_type or "none"
         if col == "draft":
             return str(key.spec_draft_n_max) if key.spec_draft_n_max is not None else "-"
         if col == "pmin":

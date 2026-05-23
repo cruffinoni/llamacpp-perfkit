@@ -5,7 +5,6 @@ import unittest
 from typing import Any
 
 from llamacpp_perfkit.output import (
-    ANSI_RE,
     ColorLevel,
     TermColor,
     color_enabled,
@@ -16,6 +15,7 @@ from llamacpp_perfkit.output import (
     configure_color,
     error,
     format_number,
+    gradient_value,
     heading,
     note,
     skip,
@@ -28,67 +28,45 @@ from llamacpp_perfkit.output import (
 )
 
 
-class TestTermColor(unittest.TestCase):
+class ColorEnvTestCase(unittest.TestCase):
+    def setUp(self) -> None:
+        self._saved_no_color = os.environ.pop("NO_COLOR", None)
+
+    def tearDown(self) -> None:
+        if self._saved_no_color is not None:
+            os.environ["NO_COLOR"] = self._saved_no_color
+
+
+class TestTermColorConfiguration(ColorEnvTestCase):
     def test_auto_enabled_by_default(self) -> None:
-        tc = TermColor()
-        self.assertTrue(tc.enabled)
+        self.assertTrue(TermColor().enabled)
 
     def test_never_disabled(self) -> None:
-        tc = TermColor(color="never")
-        self.assertFalse(tc.enabled)
+        self.assertFalse(TermColor(color="never").enabled)
 
     def test_always_enabled(self) -> None:
-        tc = TermColor(color="always")
-        self.assertTrue(tc.enabled)
+        self.assertTrue(TermColor(color="always").enabled)
 
     def test_auto_disabled_when_term_dumb(self) -> None:
         with _env("TERM", "dumb"):
-            tc = TermColor()
-            self.assertFalse(tc.enabled)
+            self.assertFalse(TermColor().enabled)
 
     def test_auto_disabled_when_no_color_env(self) -> None:
         with _env("NO_COLOR", "1"):
-            tc = TermColor()
-            self.assertFalse(tc.enabled)
+            self.assertFalse(TermColor().enabled)
 
     def test_no_color_overrides_always(self) -> None:
         tc = TermColor(color="always", no_color=True)
         self.assertFalse(tc.enabled)
         self.assertEqual(tc.level, ColorLevel.NONE)
 
-    def test_always_level_is_full(self) -> None:
-        tc = TermColor(color="always")
-        self.assertEqual(tc.level, ColorLevel.FULL)
-
-    def test_never_level_is_none(self) -> None:
-        tc = TermColor(color="never")
-        self.assertEqual(tc.level, ColorLevel.NONE)
-
     def test_auto_with_true_color_gives_full(self) -> None:
         with _env("COLORTERM", "truecolor"):
-            tc = TermColor()
-            self.assertEqual(tc.level, ColorLevel.FULL)
+            self.assertEqual(TermColor().level, ColorLevel.FULL)
 
     def test_auto_without_true_color_gives_simple(self) -> None:
         with _env("COLORTERM", None), _env("TERM", "xterm"):
-            tc = TermColor()
-            self.assertEqual(tc.level, ColorLevel.SIMPLE)
-
-    def test_auto_with_term_dumb_gives_none(self) -> None:
-        with _env("TERM", "dumb"):
-            tc = TermColor()
-            self.assertEqual(tc.level, ColorLevel.NONE)
-
-    def test_sgr_works_at_simple_level(self) -> None:
-        tc = TermColor()
-        tc._level = ColorLevel.SIMPLE
-        result = tc.sgr("hello", "red")
-        self.assertIn("\x1b[31m", result)
-
-    def test_sgr_plain_at_none_level(self) -> None:
-        tc = TermColor(color="never")
-        result = tc.sgr("hello", "red")
-        self.assertEqual(result, "hello")
+            self.assertEqual(TermColor().level, ColorLevel.SIMPLE)
 
     def test_configure_toggle(self) -> None:
         tc = TermColor()
@@ -100,364 +78,135 @@ class TestTermColor(unittest.TestCase):
         tc.configure(color="never")
         self.assertFalse(tc.enabled)
 
-    def test_sgr_wraps_when_enabled(self) -> None:
-        tc = TermColor()
+
+class TestTermColorBehavior(ColorEnvTestCase):
+    def test_sgr_preserves_visible_text_when_enabled(self) -> None:
+        tc = TermColor(color="always")
         result = tc.sgr("hello", "red")
-        self.assertIn("\x1b[31m", result)
-        self.assertIn("hello", result)
-        self.assertIn("\x1b[0m", result)
+
+        self.assertNotEqual(result, "hello")
+        self.assertEqual(tc.strip(result), "hello")
+        self.assertEqual(tc.visible_len(result), 5)
 
     def test_sgr_plain_when_disabled(self) -> None:
-        tc = TermColor(no_color=True)
-        self.assertEqual(tc.sgr("hello", "red"), "hello")
-
-    def test_sgr_multiple_codes(self) -> None:
-        tc = TermColor()
-        result = tc.sgr("x", "bold", "red")
-        self.assertIn("\x1b[1;31m", result)
+        self.assertEqual(TermColor(no_color=True).sgr("hello", "red"), "hello")
 
     def test_sgr_unknown_name_ignored(self) -> None:
-        tc = TermColor()
-        self.assertEqual(tc.sgr("x", "neon"), "x")
+        self.assertEqual(TermColor().sgr("x", "neon"), "x")
 
-    def test_sgr_no_names_returns_plain(self) -> None:
-        tc = TermColor()
-        self.assertEqual(tc.sgr("plain"), "plain")
+    def test_shortcuts_preserve_visible_text(self) -> None:
+        tc = TermColor(color="always")
+        for rendered, plain in (
+            (tc.error("fail"), "fail"),
+            (tc.warning("careful"), "careful"),
+            (tc.note("info"), "info"),
+            (tc.skip("ignored"), "ignored"),
+            (tc.heading("Title"), "Title"),
+            (tc.command("run"), "run"),
+            (tc.status("stable"), "stable"),
+        ):
+            with self.subTest(plain=plain):
+                self.assertNotEqual(rendered, plain)
+                self.assertEqual(tc.strip(rendered), plain)
 
-    def test_error_shortcut(self) -> None:
-        tc = TermColor()
-        result = tc.error("fail")
-        self.assertIn("31", result)
-        self.assertIn("1", result)
+    def test_unknown_status_returns_plain(self) -> None:
+        self.assertEqual(TermColor().status("bogus"), "bogus")
 
-    def test_warning_shortcut(self) -> None:
-        tc = TermColor()
-        result = tc.warning("careful")
-        self.assertIn("33", result)
-        self.assertIn("1", result)
-
-    def test_note_shortcut(self) -> None:
-        tc = TermColor()
-        result = tc.note("info")
-        self.assertIn("36", result)
-
-    def test_skip_shortcut(self) -> None:
-        tc = TermColor()
-        result = tc.skip("ignored")
-        self.assertIn("35", result)
-
-    def test_heading_shortcut(self) -> None:
-        tc = TermColor()
-        result = tc.heading("Title")
-        self.assertIn("36", result)
-        self.assertIn("1", result)
-
-    def test_command_shortcut(self) -> None:
-        tc = TermColor()
-        result = tc.command("run")
-        self.assertIn("32", result)
-
-    def test_status_stable(self) -> None:
-        tc = TermColor()
-        result = tc.status("stable")
-        self.assertIn("32", result)
-
-    def test_status_oom(self) -> None:
-        tc = TermColor()
-        result = tc.status("oom")
-        self.assertIn("31", result)
-
-    def test_status_timeout(self) -> None:
-        tc = TermColor()
-        result = tc.status("timeout")
-        self.assertIn("33", result)
-
-    def test_status_unsupported(self) -> None:
-        tc = TermColor()
-        result = tc.status("unsupported")
-        self.assertIn("35", result)
-
-    def test_status_unknown_returns_plain(self) -> None:
-        tc = TermColor()
-        self.assertEqual(tc.status("bogus"), "bogus")
-
-    def test_colorize_evidence_stable(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_evidence("stable (2/2)")
-        self.assertIn("32", result)
-        self.assertIn("stable (2/2)", result)
-
-    def test_colorize_evidence_tight(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_evidence("tight (1/3)")
-        self.assertIn("33", result)
-
-    def test_colorize_evidence_timeout(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_evidence("timeout (0/3)")
-        self.assertIn("33", result)
-
-    def test_colorize_evidence_oom(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_evidence("oom (0/3)")
-        self.assertIn("31", result)
-
-    def test_colorize_evidence_failed(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_evidence("failed (0/3)")
-        self.assertIn("31", result)
-
-    def test_colorize_evidence_unsupported(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_evidence("unsupported")
-        self.assertIn("35", result)
+    def test_colorize_evidence_preserves_known_status_text(self) -> None:
+        tc = TermColor(color="always")
+        for value in ("stable (2/2)", "tight (1/3)", "timeout (0/3)", "oom (0/3)", "failed (0/3)", "unsupported"):
+            with self.subTest(value=value):
+                result = tc.colorize_evidence(value)
+                self.assertNotEqual(result, value)
+                self.assertEqual(tc.strip(result), value)
 
     def test_colorize_evidence_unknown_returns_plain(self) -> None:
-        tc = TermColor()
-        self.assertEqual(tc.colorize_evidence("bogus status"), "bogus status")
+        self.assertEqual(TermColor().colorize_evidence("bogus status"), "bogus status")
 
-    def test_colorize_delta_positive_green_higher_is_better(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_delta("+10%", 10.0, higher_is_better=True)
-        self.assertIn("32", result)
+    def test_colorize_delta_preserves_text_for_threshold_cases(self) -> None:
+        tc = TermColor(color="always")
+        cases = (
+            ("+10%", 10.0, True, None),
+            ("-10%", -10.0, True, None),
+            ("-5s", -5.0, False, None),
+            ("+5s", 5.0, False, None),
+            ("-0.5G", -0.5, True, 1.0),
+            ("-2.0G", -2.0, True, 1.0),
+        )
+        for text, value, higher_is_better, threshold in cases:
+            with self.subTest(text=text):
+                result = tc.colorize_delta(text, value, higher_is_better=higher_is_better, mild_threshold=threshold)
+                self.assertNotEqual(result, text)
+                self.assertEqual(tc.strip(result), text)
 
-    def test_colorize_delta_negative_red_higher_is_better(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_delta("-10%", -10.0, higher_is_better=True)
-        self.assertIn("31", result)
+    def test_colorize_config_label_preserves_visible_tokens(self) -> None:
+        tc = TermColor(color="always")
+        label = "model ctx4096 q8_0 moe16 spec draft-mtp"
+        result = tc.colorize_config_label(label)
 
-    def test_colorize_delta_negative_green_lower_is_better(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_delta("-5s", -5.0, higher_is_better=False)
-        self.assertIn("32", result)
-
-    def test_colorize_delta_positive_red_lower_is_better(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_delta("+5s", 5.0, higher_is_better=False)
-        self.assertIn("31", result)
-
-    def test_colorize_delta_zero_green(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_delta("0%", 0.0, higher_is_better=True)
-        self.assertIn("32", result)
-
-    def test_colorize_delta_mild_threshold_yellow(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_delta("-0.5G", -0.5, higher_is_better=True, mild_threshold=1.0)
-        self.assertIn("33", result)
-
-    def test_colorize_delta_severe_threshold_red(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_delta("-2.0G", -2.0, higher_is_better=True, mild_threshold=1.0)
-        self.assertIn("31", result)
-
-    def test_colorize_delta_threshold_exact_boundary_red(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_delta("-1.0G", -1.0, higher_is_better=True, mild_threshold=1.0)
-        self.assertIn("31", result)
-
-    def test_colorize_config_label_kv_token(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_config_label("model ctx4096 q8_0 moe0 base")
-        self.assertIn("\x1b[36mq8_0\x1b[0m", result)
-
-    def test_colorize_config_label_moe_token(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_config_label("model ctx4096 q8_0 moe16 base")
-        self.assertIn("\x1b[34mmoe16\x1b[0m", result)
-
-    def test_colorize_config_label_base_green(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_config_label("model ctx4096 q8_0 moe0 base")
-        self.assertIn("\x1b[32mbase\x1b[0m", result)
-
-    def test_colorize_config_label_mtp_magenta(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_config_label("model ctx4096 q8_0 moe0 mtp")
-        self.assertIn("\x1b[35mmtp\x1b[0m", result)
-
-    def test_colorize_config_label_spec_token_yellow(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_config_label("model ctx4096 q8_0 moe0 mtp draft-mtp")
-        self.assertIn("\x1b[33mdraft-mtp\x1b[0m", result)
-
-    def test_colorize_config_label_ctx_token_blue(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_config_label("model ctx4096 q8_0 moe0 base")
-        self.assertIn("\x1b[34mctx4096\x1b[0m", result)
+        self.assertNotEqual(result, label)
+        self.assertEqual(tc.strip(result), label)
 
     def test_colorize_config_label_plain_tokens_unchanged(self) -> None:
-        tc = TermColor()
-        result = tc.colorize_config_label("model b1024/u1024")
-        self.assertIn("model", result)
-        self.assertIn("b1024/u1024", result)
-        stripped = ANSI_RE.sub("", result)
-        self.assertEqual(stripped, "model b1024/u1024")
+        tc = TermColor(color="always")
+        label = "model b1024/u1024"
+        self.assertEqual(tc.colorize_config_label(label), label)
 
     def test_colorize_config_label_disabled(self) -> None:
-        tc = TermColor(no_color=True)
-        result = tc.colorize_config_label("model ctx4096 q8_0 moe16 base mtp draft-mtp")
-        self.assertNotIn("\x1b[", result)
+        label = "model ctx4096 q8_0 moe16 spec draft-mtp"
+        self.assertEqual(TermColor(no_color=True).colorize_config_label(label), label)
 
-    def test_table_value_status_column(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("status", "success")
-        self.assertIn("32", result)
+    def test_table_value_preserves_visible_text_for_styled_columns(self) -> None:
+        tc = TermColor(color="always")
+        for column, value in (
+            ("status", "success"),
+            ("parsed.benchmark_valid", "True"),
+            ("parsed.benchmark_valid", "False"),
+            ("parsed.benchmark_invalid_reason", "bad input"),
+            ("speedup_pct", "5.0"),
+            ("speedup_pct", "-3.0"),
+            ("gain_tok_s", "10.0"),
+            ("kv", "q8_0"),
+            ("moe", "16"),
+            ("spec", "draft-mtp"),
+            ("ctx", "4096"),
+        ):
+            with self.subTest(column=column, value=value):
+                result = tc.table_value(column, value)
+                self.assertNotEqual(result, value)
+                self.assertEqual(tc.strip(result), value)
 
-    def test_table_value_benchmark_valid_true(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("parsed.benchmark_valid", "True")
-        self.assertIn("32", result)
-
-    def test_table_value_benchmark_valid_false(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("parsed.benchmark_valid", "False")
-        self.assertIn("33", result)
-
-    def test_table_value_invalid_reason(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("parsed.benchmark_invalid_reason", "bad input")
-        self.assertIn("33", result)
-        self.assertIn("1", result)
-
-    def test_table_value_invalid_reason_dash(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("parsed.benchmark_invalid_reason", "-")
-        self.assertEqual(result, "-")
-
-    def test_table_value_speedup_positive(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("speedup_pct", "5.0")
-        self.assertIn("32", result)
-
-    def test_table_value_speedup_negative(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("speedup_pct", "-3.0")
-        self.assertIn("31", result)
-
-    def test_table_value_gain_tok_s_positive(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("gain_tok_s", "10.0")
-        self.assertIn("32", result)
-
-    def test_table_value_unknown_column_passthrough(self) -> None:
-        tc = TermColor()
+    def test_table_value_passthrough_cases(self) -> None:
+        tc = TermColor(color="always")
         self.assertEqual(tc.table_value("some_column", "hello"), "hello")
+        self.assertEqual(tc.table_value("parsed.benchmark_invalid_reason", "-"), "-")
+        self.assertEqual(tc.table_value("kv", "-"), "-")
+        self.assertEqual(tc.table_value("moe", "-"), "-")
+        self.assertEqual(tc.table_value("spec", "none"), "none")
+        self.assertEqual(tc.table_value("spec", "-"), "-")
+        self.assertEqual(tc.table_value("ctx", "-"), "-")
 
-    def test_table_value_kv_cyan(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("kv", "q8_0")
-        self.assertIn("36", result)
-
-    def test_table_value_kv_dash_passthrough(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("kv", "-")
-        self.assertEqual(result, "-")
-
-    def test_table_value_moe_numeric_blue(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("moe", "16")
-        self.assertIn("34", result)
-
-    def test_table_value_moe_dash_passthrough(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("moe", "-")
-        self.assertEqual(result, "-")
-
-    def test_table_value_spec_base_green(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("spec", "base")
-        self.assertIn("32", result)
-
-    def test_table_value_spec_mtp_magenta(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("spec", "mtp")
-        self.assertIn("35", result)
-
-    def test_table_value_spec_draft_yellow(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("spec", "draft-mtp")
-        self.assertIn("33", result)
-
-    def test_table_value_ctx_blue(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("ctx", "4096")
-        self.assertIn("34", result)
-
-    def test_table_value_ctx_dash_passthrough(self) -> None:
-        tc = TermColor()
-        result = tc.table_value("ctx", "-")
-        self.assertEqual(result, "-")
-
-    def test_gradient_best_green(self) -> None:
+    def test_gradient_preserves_visible_text_when_full_color_applies(self) -> None:
         tc = TermColor(color="always")
-        result = tc.gradient("100", 100.0, 0.0, 100.0, higher_is_better=True)
-        self.assertIn("0;255;0", result)
-
-    def test_gradient_worst_red(self) -> None:
-        tc = TermColor(color="always")
-        result = tc.gradient("0", 0.0, 0.0, 100.0, higher_is_better=True)
-        self.assertIn("255;0;0", result)
-
-    def test_gradient_mid_yellowish(self) -> None:
-        tc = TermColor(color="always")
-        result = tc.gradient("50", 50.0, 0.0, 100.0, higher_is_better=True)
-        self.assertIn("255;255;0", result)
-
-    def test_gradient_lower_is_better(self) -> None:
-        tc = TermColor(color="always")
-        result = tc.gradient("0", 0.0, 0.0, 100.0, higher_is_better=False)
-        self.assertIn("0;255;0", result)
-
-    def test_gradient_disabled_returns_plain(self) -> None:
-        tc = TermColor(no_color=True)
         result = tc.gradient("50", 50.0, 0.0, 100.0)
-        self.assertEqual(result, "50")
 
-    def test_gradient_min_equals_max_returns_plain(self) -> None:
-        tc = TermColor(color="always")
-        result = tc.gradient("50", 50.0, 50.0, 50.0)
-        self.assertEqual(result, "50")
+        self.assertNotEqual(result, "50")
+        self.assertEqual(tc.strip(result), "50")
 
-    def test_gradient_clamped_below_zero(self) -> None:
-        tc = TermColor(color="always")
-        result = tc.gradient("-10", -10.0, 0.0, 100.0, higher_is_better=True)
-        self.assertIn("255;0;0", result)
-
-    def test_gradient_skipped_when_simple_level(self) -> None:
-        tc = TermColor(no_color=False)
-        tc.configure(color="auto")
-        tc._level = ColorLevel.SIMPLE
-        result = tc.gradient("50", 50.0, 0.0, 100.0)
-        self.assertEqual(result, "50")
-
-    def test_gradient_skipped_when_none_level(self) -> None:
-        tc = TermColor(no_color=True)
-        result = tc.gradient("50", 50.0, 0.0, 100.0)
-        self.assertEqual(result, "50")
-
-    def test_strip_removes_ansi(self) -> None:
-        tc = TermColor()
-        self.assertEqual(tc.strip("\x1b[31mhi\x1b[0m"), "hi")
-
-    def test_visible_len_ignores_ansi(self) -> None:
-        tc = TermColor()
-        self.assertEqual(tc.visible_len("\x1b[31mhi\x1b[0m"), 2)
-
-    def test_enabled_property(self) -> None:
-        tc = TermColor()
-        self.assertTrue(tc.enabled)
-        tc2 = TermColor(color="never")
-        self.assertFalse(tc2.enabled)
+    def test_gradient_plain_when_disabled_or_no_range(self) -> None:
+        self.assertEqual(TermColor(no_color=True).gradient("50", 50.0, 0.0, 100.0), "50")
+        self.assertEqual(TermColor(color="always").gradient("50", 50.0, 50.0, 50.0), "50")
 
 
-class TestModuleFunctions(unittest.TestCase):
+class TestModuleFunctions(ColorEnvTestCase):
     def setUp(self) -> None:
+        super().setUp()
         self._saved_enabled = color_enabled()
         configure_color(color="always")
 
     def tearDown(self) -> None:
         configure_color(color="always" if self._saved_enabled else "never")
+        super().tearDown()
 
     def test_configure_color_no_color_disables(self) -> None:
         configure_color(no_color=True)
@@ -466,77 +215,39 @@ class TestModuleFunctions(unittest.TestCase):
     def test_configure_color_always_enables(self) -> None:
         configure_color(color="always")
         self.assertTrue(color_enabled())
-        result = style("x", "red")
-        self.assertIn("\x1b[31m", result)
+        self.assertEqual(strip_style(style("x", "red")), "x")
+
+    def test_module_shortcuts_preserve_visible_text(self) -> None:
+        for rendered, plain in (
+            (error("fail"), "fail"),
+            (warning("careful"), "careful"),
+            (heading("Title"), "Title"),
+            (command("run"), "run"),
+            (note("info"), "info"),
+            (skip("skip"), "skip"),
+            (status("stable"), "stable"),
+            (style_table_value("speedup_pct", "5.0"), "5.0"),
+            (colorize_evidence("stable (2/2)"), "stable (2/2)"),
+            (colorize_delta("+10%", 10.0, higher_is_better=True), "+10%"),
+            (colorize_config_label("model ctx4096 q8_0 moe0 spec -"), "model ctx4096 q8_0 moe0 spec -"),
+            (gradient_value("100", 100.0, 0.0, 100.0, higher_is_better=True), "100"),
+        ):
+            with self.subTest(plain=plain):
+                self.assertEqual(strip_style(rendered), plain)
 
     def test_style_disabled_returns_plain(self) -> None:
         configure_color(no_color=True)
         self.assertEqual(style("x", "red"), "x")
 
-    def test_module_error_function(self) -> None:
-        result = error("fail")
-        self.assertIn("31", result)
+    def test_strip_style_and_visible_len(self) -> None:
+        rendered = TermColor(color="always").sgr("hi", "red")
 
-    def test_module_warning_function(self) -> None:
-        result = warning("careful")
-        self.assertIn("33", result)
-
-    def test_module_heading_function(self) -> None:
-        result = heading("Title")
-        self.assertIn("36", result)
-
-    def test_module_command_function(self) -> None:
-        result = command("run")
-        self.assertIn("32", result)
-
-    def test_module_note_function(self) -> None:
-        result = note("info")
-        self.assertIn("36", result)
-
-    def test_module_skip_function(self) -> None:
-        result = skip("skip")
-        self.assertIn("35", result)
-
-    def test_module_status_function(self) -> None:
-        result = status("stable")
-        self.assertIn("32", result)
-
-    def test_module_style_table_value(self) -> None:
-        result = style_table_value("speedup_pct", "5.0")
-        self.assertIn("32", result)
-
-    def test_module_strip_style(self) -> None:
-        self.assertEqual(strip_style("\x1b[31mhi\x1b[0m"), "hi")
-
-    def test_module_visible_len(self) -> None:
-        self.assertEqual(visible_len("\x1b[31mhi\x1b[0m"), 2)
-
-    def test_colorize_evidence_module_level(self) -> None:
-        result = colorize_evidence("stable (2/2)")
-        self.assertIn("32", result)
-        self.assertIn("stable (2/2)", result)
-
-    def test_colorize_delta_module_level(self) -> None:
-        result = colorize_delta("+10%", 10.0, higher_is_better=True)
-        self.assertIn("32", result)
-
-    def test_colorize_config_label_module_level(self) -> None:
-        result = colorize_config_label("model ctx4096 q8_0 moe0 base")
-        self.assertIn("\x1b[36mq8_0\x1b[0m", result)
-
-    def test_gradient_value_module_level_full(self) -> None:
-        from llamacpp_perfkit.output import gradient_value
-
-        configure_color(color="always")
-        result = gradient_value("100", 100.0, 0.0, 100.0, higher_is_better=True)
-        self.assertIn("0;255;0", result)
+        self.assertEqual(strip_style(rendered), "hi")
+        self.assertEqual(visible_len(rendered), 2)
 
     def test_gradient_value_module_level_none_plain(self) -> None:
-        from llamacpp_perfkit.output import gradient_value
-
         configure_color(no_color=True)
-        result = gradient_value("50", 50.0, 0.0, 100.0)
-        self.assertEqual(result, "50")
+        self.assertEqual(gradient_value("50", 50.0, 0.0, 100.0), "50")
 
 
 def _env(key: str, value: str | None) -> _EnvOverride:

@@ -9,7 +9,6 @@ from .benchlib import (
     benchmark_invalid_reason,
     config_hash,
     get_field,
-    model_hf,
     prompt_profiles,
     row_config_hash,
     successful,
@@ -32,7 +31,6 @@ def budget_config(cfg: dict[str, Any], mode: str | None = None, max_runs: int | 
 
 def candidate_jobs(cfg: dict[str, Any], features: dict[str, Any]) -> tuple[list[dict[str, Any]], list[dict[str, Any]]]:
     matrix = cfg.get("matrix", {})
-    mtp_cfg = matrix.get("mtp", {})
     flags = features["flags"]["llama_server"]
     skipped: list[dict[str, Any]] = []
     kv_values = usable_kv_values(cfg, features)
@@ -51,6 +49,15 @@ def candidate_jobs(cfg: dict[str, Any], features: dict[str, Any]) -> tuple[list[
     batch_size_values = matrix.get("batch_size", [1024])
     ubatch_size_values = matrix.get("ubatch_size", [1024])
 
+    spec_type_values: list[Any] = matrix.get("spec_type", [])
+    if not spec_type_values:
+        spec_type_values = [None]
+
+    supported_spec_types = features.get("spec", {}).get("supported_values") or []
+    for value in spec_type_values:
+        if value is not None and supported_spec_types and value not in supported_spec_types:
+            skipped.append({"dimension": "spec_type", "value": value, "reason": "not listed in local --spec-type allowed values"})
+
     jobs: list[dict[str, Any]] = []
     profiles = prompt_profiles(cfg)
     base_product = itertools.product(
@@ -60,19 +67,12 @@ def candidate_jobs(cfg: dict[str, Any], features: dict[str, Any]) -> tuple[list[
         kv_values,
         batch_size_values,
         ubatch_size_values,
-        mtp_cfg.get("enabled", [False]),
+        spec_type_values,
     )
-    for profile, n_cpu_moe, ctx, kv, batch, ubatch, mtp_enabled in base_product:
-        if mtp_enabled:
-            if not features["mtp"]["supported"]:
-                skipped.append({"dimension": "mtp", "value": True, "reason": features["mtp"]["reason"]})
-                continue
-            mtp_model = model_hf(cfg, mtp=True)
-            if not mtp_model:
-                skipped.append({"dimension": "mtp", "value": True, "reason": "MODEL_HF_MTP/config models.mtp_hf is empty"})
-                continue
-            draft_values: list[Any] = mtp_cfg.get("draft_n_max", [None]) if flags.get("spec_draft_n_max") else [None]
-            p_values: list[Any] = mtp_cfg.get("spec_draft_p_min", [None]) if flags.get("spec_draft_p_min") else [None]
+    for profile, n_cpu_moe, ctx, kv, batch, ubatch, spec_type in base_product:
+        if spec_type is not None:
+            draft_values: list[Any] = matrix.get("spec_draft_n_max", [None]) if flags.get("spec_draft_n_max") else [None]
+            p_values: list[Any] = matrix.get("spec_draft_p_min", [None]) if flags.get("spec_draft_p_min") else [None]
         else:
             draft_values = [None]
             p_values = [None]
@@ -86,10 +86,9 @@ def candidate_jobs(cfg: dict[str, Any], features: dict[str, Any]) -> tuple[list[
                     "kv_type": kv,
                     "batch_size": batch,
                     "ubatch_size": ubatch,
-                    "mtp_enabled": bool(mtp_enabled),
-                    "mtp_spec_type": features["mtp"]["usable_spec_type"] if mtp_enabled else None,
-                    "mtp_draft_n_max": draft_n,
-                    "mtp_draft_p_min": p_min,
+                    "spec_type": spec_type,
+                    "spec_draft_n_max": draft_n,
+                    "spec_draft_p_min": p_min,
                 }
             )
     return jobs, skipped
@@ -127,8 +126,8 @@ def is_safe(row: dict[str, Any] | None, min_headroom_gb: float) -> bool:
     return free is not None and free >= min_headroom_gb * 1024
 
 
-def job_key(job: dict[str, Any], include_mtp: bool = True) -> tuple[Any, ...]:
-    key: tuple[Any, ...] = (
+def job_key(job: dict[str, Any]) -> tuple[Any, ...]:
+    return (
         job.get("prompt_profile"),
         job.get("prompt_file"),
         job.get("context_size"),
@@ -136,10 +135,10 @@ def job_key(job: dict[str, Any], include_mtp: bool = True) -> tuple[Any, ...]:
         job.get("n_cpu_moe"),
         job.get("batch_size"),
         job.get("ubatch_size"),
+        job.get("spec_type"),
+        job.get("spec_draft_n_max"),
+        job.get("spec_draft_p_min"),
     )
-    if include_mtp:
-        key += (job.get("mtp_enabled"), job.get("mtp_draft_n_max"), job.get("mtp_draft_p_min"))
-    return key
 
 
 def baseline_key(row_or_job: dict[str, Any]) -> tuple[Any, ...]:
@@ -171,42 +170,12 @@ def first_kv(cfg: dict[str, Any], features: dict[str, Any]) -> str | None:
     return values[0] if values else None
 
 
-def preferred_mtp_variants(candidates: list[dict[str, Any]], limit: int = 1) -> list[dict[str, Any]]:
-    mtp = [c for c in candidates if c.get("mtp_enabled")]
-    mtp.sort(
-        key=lambda j: (
-            j.get("mtp_draft_n_max") is None,
-            j.get("mtp_draft_n_max") or 999,
-            j.get("mtp_draft_p_min") is None,
-            j.get("mtp_draft_p_min") or 999,
-        )
-    )
-    return mtp[:limit]
-
-
-def successful_baselines_for(
-    cfg: dict[str, Any], rows: list[dict[str, Any]], min_headroom_gb: float, valid_hashes: set[str] | None = None
-) -> list[dict[str, Any]]:
-    out: list[dict[str, Any]] = []
-    for row in successful(rows):
-        if valid_hashes is not None and row_config_hash(cfg, row) not in valid_hashes:
-            continue
-        if get_field(row, "config.mtp_enabled"):
-            continue
-        if is_safe(row, min_headroom_gb):
-            out.append(row)
-    out.sort(key=lambda r: get_field(r, "parsed.generation_tok_s") or 0, reverse=True)
-    return out
-
-
 def risk_level(job: dict[str, Any], rows: list[dict[str, Any]], min_headroom_gb: float) -> str:
-    if job.get("mtp_enabled"):
-        return "medium"
     ctx = job.get("context_size") or 0
     moe = job.get("n_cpu_moe")
     for row in rows:
         rcfg = row.get("config", {})
-        if rcfg.get("mtp_enabled") or rcfg.get("kv_type") != job.get("kv_type"):
+        if rcfg.get("kv_type") != job.get("kv_type"):
             continue
         rctx = rcfg.get("context_size") or 0
         rmoe = rcfg.get("n_cpu_moe")
@@ -225,28 +194,14 @@ def risk_level(job: dict[str, Any], rows: list[dict[str, Any]], min_headroom_gb:
 def select_smoke(cfg: dict[str, Any], candidates: list[dict[str, Any]], features: dict[str, Any]) -> list[dict[str, Any]]:
     ctx = min(cfg.get("matrix", {}).get("context_size", [target_context(cfg)]))
     kv = first_kv(cfg, features)
-    n_values = [
-        c.get("n_cpu_moe") for c in candidates if not c.get("mtp_enabled") and c.get("context_size") == ctx and c.get("kv_type") == kv
-    ]
+    n_values = [c.get("n_cpu_moe") for c in candidates if c.get("context_size") == ctx and c.get("kv_type") == kv]
     n_cpu = max([n for n in n_values if n is not None], default=None)
-    base = [
-        c
-        for c in candidates
-        if not c.get("mtp_enabled") and c.get("context_size") == ctx and c.get("kv_type") == kv and c.get("n_cpu_moe") == n_cpu
-    ]
-    selected: list[dict[str, Any]] = base[:1]
-    if selected:
-        mtp = [
-            c
-            for c in preferred_mtp_variants(candidates, 4)
-            if c.get("context_size") == ctx and c.get("kv_type") == kv and c.get("n_cpu_moe") == n_cpu
-        ]
-        selected.extend(mtp[:1])
-    return selected
+    selected = [c for c in candidates if c.get("context_size") == ctx and c.get("kv_type") == kv and c.get("n_cpu_moe") == n_cpu]
+    return selected[:1]
 
 
 def safest_n_cpu_moe(cfg: dict[str, Any], candidates: list[dict[str, Any]]) -> int | None:
-    values: list[int] = [c["n_cpu_moe"] for c in candidates if not c.get("mtp_enabled") and isinstance(c.get("n_cpu_moe"), int)]
+    values: list[int] = [c["n_cpu_moe"] for c in candidates if isinstance(c.get("n_cpu_moe"), int)]
     if values:
         return max(values)
     configured = [n for n in cfg.get("matrix", {}).get("n_cpu_moe", []) if n is not None]
@@ -265,31 +220,7 @@ def select_quick(
     ctx = target_context(cfg)
     kv = first_kv(cfg, features)
     n_cpu = safest_n_cpu_moe(cfg, candidates)
-    base_selected = [
-        c
-        for c in candidates
-        if not c.get("mtp_enabled") and c.get("context_size") == ctx and c.get("kv_type") == kv and c.get("n_cpu_moe") == n_cpu
-    ]
-    safe_bases = successful_baselines_for(cfg, rows, min_headroom_gb, candidate_hashes)
-    safe_bases = [
-        r
-        for r in safe_bases
-        if get_field(r, "config.context_size") == ctx and get_field(r, "config.kv_type") == kv and get_field(r, "config.n_cpu_moe") == n_cpu
-    ]
-    mtp_selected: list[dict[str, Any]] = []
-    for row in safe_bases:
-        rcfg = row.get("config", {})
-        mtp = [
-            c
-            for c in preferred_mtp_variants(candidates, 8)
-            if c.get("context_size") == rcfg.get("context_size")
-            and c.get("kv_type") == rcfg.get("kv_type")
-            and c.get("n_cpu_moe") == rcfg.get("n_cpu_moe")
-            and c.get("prompt_profile") == rcfg.get("prompt_profile", "default")
-            and c.get("prompt_file") == rcfg.get("prompt_file")
-        ]
-        mtp_selected.extend(mtp[:1])
-    selected = mtp_selected + base_selected if mtp_selected else base_selected
+    selected = [c for c in candidates if c.get("context_size") == ctx and c.get("kv_type") == kv and c.get("n_cpu_moe") == n_cpu]
     return unique_jobs(selected)[:max_runs]
 
 
@@ -302,10 +233,11 @@ def select_focused(
     min_headroom_gb: float,
     candidate_hashes: set[str] | None = None,
 ) -> list[dict[str, Any]]:
-    safe_bases = successful_baselines_for(cfg, rows, min_headroom_gb, candidate_hashes)
-    if not safe_bases:
+    safe_rows = [r for r in successful(rows) if is_safe(r, min_headroom_gb)]
+    safe_rows.sort(key=lambda r: get_field(r, "parsed.generation_tok_s") or 0, reverse=True)
+    if not safe_rows:
         return select_quick(cfg, candidates, rows, features, min(8, max_runs), min_headroom_gb, candidate_hashes)
-    best = safe_bases[0].get("config", {})
+    best = safe_rows[0].get("config", {})
     n_values: list[Any] = cfg.get("matrix", {}).get("n_cpu_moe", [best.get("n_cpu_moe")])
     try:
         idx = n_values.index(best.get("n_cpu_moe"))
@@ -316,21 +248,8 @@ def select_focused(
     selected: list[dict[str, Any]] = [
         c
         for c in candidates
-        if not c.get("mtp_enabled")
-        and c.get("context_size") == best.get("context_size")
-        and c.get("kv_type") in kv_values
-        and c.get("n_cpu_moe") in neighbor_ns
+        if c.get("context_size") == best.get("context_size") and c.get("kv_type") in kv_values and c.get("n_cpu_moe") in neighbor_ns
     ]
-    for row in safe_bases[:2]:
-        rcfg = row.get("config", {})
-        mtp = [
-            c
-            for c in preferred_mtp_variants(candidates, 8)
-            if c.get("context_size") == rcfg.get("context_size")
-            and c.get("kv_type") == rcfg.get("kv_type")
-            and c.get("n_cpu_moe") == rcfg.get("n_cpu_moe")
-        ]
-        selected.extend(mtp[:1])
     return unique_jobs(selected)[:max_runs]
 
 
@@ -347,8 +266,10 @@ def unique_jobs(jobs: list[dict[str, Any]]) -> list[dict[str, Any]]:
 
 
 def action_for_job(
-    job: dict[str, Any], by_hash: dict[str, dict[str, Any]], retry_failed: bool, reuse_existing: bool
+    job: dict[str, Any], by_hash: dict[str, dict[str, Any]], retry_failed: bool, reuse_existing: bool, force: bool = False
 ) -> tuple[str, str | None]:
+    if force:
+        return "run", None
     existing = by_hash.get(job["config_hash"])
     if existing and existing.get("status") == "success":
         invalid_reason = benchmark_invalid_reason(existing)
@@ -368,6 +289,7 @@ def make_plan(
     mode: str | None = None,
     max_runs: int | None = None,
     retry_failed: bool = False,
+    force: bool = False,
 ) -> dict[str, Any]:
     budget = budget_config(cfg, mode, max_runs)
     mode = budget.get("mode", "quick")
@@ -394,7 +316,7 @@ def make_plan(
 
     plan_runs: list[dict[str, Any]] = []
     for idx, job in enumerate(selected, 1):
-        action, reason = action_for_job(job, by_hash, retry_failed, bool(budget.get("reuse_existing_results", True)))
+        action, reason = action_for_job(job, by_hash, retry_failed, bool(budget.get("reuse_existing_results", True)), force)
         risk = risk_level(job, rows, min_headroom)
         if mode != "full" and budget.get("stop_if_all_remaining_are_risky") and risk == "high" and action == "run":
             action, reason = "skip", "risk is high after prior OOM/unsafe result"
@@ -402,7 +324,6 @@ def make_plan(
             {
                 "run_id": f"plan-{idx:04d}",
                 "config_hash": job["config_hash"],
-                "kind": "mtp" if job.get("mtp_enabled") else "baseline",
                 "reason": selection_reason(mode, job),
                 "risk_level": risk,
                 "action": action,
@@ -429,15 +350,13 @@ def make_plan(
 
 
 def selection_reason(mode: str, job: dict[str, Any]) -> str:
-    if job.get("mtp_enabled"):
-        return f"{mode}: MTP preset"
     if mode == "smoke":
-        return "smoke: conservative non-MTP baseline"
+        return "smoke: conservative single configuration"
     if mode == "focused":
-        return "focused: refine around existing safe baseline"
+        return "focused: refine around existing safe configuration"
     if mode == "full":
         return "full: explicit Cartesian sweep"
-    return "quick: prioritized non-MTP baseline"
+    return "quick: prioritized safe configuration"
 
 
 def plan_notes(mode: str, candidates: list[dict[str, Any]], plan_runs: list[dict[str, Any]]) -> list[str]:

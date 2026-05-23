@@ -1,9 +1,8 @@
 models:
-  baseline_hf: "ggml-org/gemma-3-1b-it-GGUF"
-  mtp_hf: null
+  hf: "ggml-org/gemma-3-1b-it-GGUF"
 
 llama:
-  bin_dir: "../llama.cpp/build/bin"
+  bin_dir: "../llama.cpp/autobuild-cuda/bin"
   preferred_binary: "llama-server"
   server:
     host: "127.0.0.1"
@@ -47,11 +46,9 @@ matrix:
   kv_type: ["q8_0"]
   batch_size: [256]
   ubatch_size: [256]
-  mtp:
-    enabled: [false]
-    draft_n_max: [null]
-    spec_type_preference: ["draft-mtp", "mtp"]
-    spec_draft_p_min: [null]
+  spec_type: [null]
+  spec_draft_n_max: [null]
+  spec_draft_p_min: [null]
 
 output:
   logs_dir: "logs"

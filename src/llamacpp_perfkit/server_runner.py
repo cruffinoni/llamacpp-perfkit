@@ -17,7 +17,6 @@ from .benchlib import (
     classify_http_error,
     classify_run,
     command_to_shell,
-    fmt_value,
     free_tcp_port,
     http_json,
     model_hf,
@@ -29,8 +28,6 @@ from .benchlib import (
     server_group_key,
     stability_status,
 )
-from .output import format_duration, heading
-from .output import status as styled_status
 from .planner import make_plan, write_plan
 from .run_storage import (
     append_llamacpp_metric,
@@ -42,12 +39,7 @@ from .run_storage import (
     terminal_llamacpp_sample,
     write_run_summary,
 )
-
-
-def format_gen_tok_s(value: Any) -> str:
-    if not isinstance(value, (int, float)):
-        return "-"
-    return f"{value:.2f}"
+from .tui import BenchmarkTUIState, BuildInfoView, TUIRenderer
 
 
 class LlamaServerProcess:
@@ -234,12 +226,31 @@ class LlamaServerBenchmarkRunner:
         self.startup_timeout = server_cfg.get("startup_timeout_seconds", 300)
         self.shutdown_timeout = server_cfg.get("shutdown_timeout_seconds", 15)
 
+        llama_cpp_meta = features.get("llama_cpp", {}) or {}
+        run_id = f"{int(time.time())}_{llama_cpp_meta.get('commit_short', 'unknown')[:8]}"
+        self.tui_state = BenchmarkTUIState(
+            run_id=run_id,
+            build_info=BuildInfoView(
+                commit_short=llama_cpp_meta.get("commit_short", "unknown"),
+                branch=llama_cpp_meta.get("branch", "unknown"),
+                backend=features.get("backend", "server"),
+            ),
+            model_name=model_hf(cfg) or "unknown",
+        )
+        self.tui_renderer = TUIRenderer(self.tui_state)
+        self._jobs_completed_total = 0
+
     def run(self, max_runs: int | None) -> int:
+        return self.tui_renderer.run(lambda: self._run_benchmark(max_runs))
+
+    def _run_benchmark(self, max_runs: int | None) -> int:
         max_runs = None if max_runs is None or int(max_runs) <= 0 else int(max_runs)
+        run_started = time.time()
         executed = 0
         group_index = 0
         attempted_hashes: set[str] = set()
-        while max_runs is None or executed < max_runs:
+        self._update_tui(lifecycle_state="planning", status_message="Building benchmark plan.")
+        while not self.tui_renderer.stop_requested and (max_runs is None or executed < max_runs):
             rows = load_run_rows(self.results_dir)
             plan_limit = self.args.max_runs if self.args.max_runs is not None else self.args.limit
             plan = make_plan(
@@ -249,16 +260,29 @@ class LlamaServerBenchmarkRunner:
                 mode=self.args.mode,
                 max_runs=plan_limit,
                 retry_failed=self.args.retry_failed,
+                force=getattr(self.args, "force", False),
             )
             write_plan(plan, self.plan_path)
             groups = self._pending_groups(plan, attempted_hashes)
             if not groups:
                 break
+            total_servers = len(groups)
+            total_jobs = sum(len(g) for g in groups)
+            self._update_tui(
+                servers_total=total_servers,
+                jobs_total=total_jobs,
+                elapsed_seconds=time.time() - run_started,
+                lifecycle_state="running",
+                status_message="Running benchmark matrix.",
+            )
             remaining = None if max_runs is None else max_runs - executed
             group = groups[0] if remaining is None else groups[0][:remaining]
             group_index += 1
             attempted_hashes.update(item["config_hash"] for item in group)
             executed += self._run_group(group, group_index, "unlimited" if max_runs is None else max_runs)
+        final_state = "stopped" if self.tui_renderer.stop_requested else "complete"
+        final_message = "Stopped after active request finished." if self.tui_renderer.stop_requested else "No runnable jobs remain."
+        self._update_tui(lifecycle_state=final_state, status_message=final_message, elapsed_seconds=time.time() - run_started)
         return executed
 
     def _pending_groups(self, plan: dict[str, Any], attempted_hashes: set[str]) -> list[list[dict[str, Any]]]:
@@ -278,6 +302,7 @@ class LlamaServerBenchmarkRunner:
 
     def _run_group(self, group: list[dict[str, Any]], group_index: int, max_groups: int | str) -> int:
         representative = group[0]["job"]
+        prompt_profiles = [item["job"].get("prompt_profile", "default") for item in group]
         port = free_tcp_port(self.host)
         server_run_id = f"{int(time.time())}-server-{group_index:04d}"
         raw_path = self.raw_dir / f"{server_run_id}.log"
@@ -296,15 +321,25 @@ class LlamaServerBenchmarkRunner:
             "server_command": cmd,
             "server_command_shell": command_to_shell(cmd),
             "server_log_path": str(raw_path),
+            "prompt_profiles": prompt_profiles,
         }
-        print(
-            heading(
-                f"[server {group_index}/{max_groups}] {server_run_id} jobs={len(group)} "
-                f"ctx={fmt_value(representative['context_size'])} kv={representative['kv_type']} "
-                f"n_cpu_moe={representative['n_cpu_moe']} mtp={representative['mtp_enabled']} "
-                f"batch={fmt_value(representative.get('batch_size'))} ubatch={fmt_value(representative.get('ubatch_size'))}"
-            )
+        # Update TUI for server start
+        self._update_tui(
+            server_index=group_index,
+            current_server_id=server_run_id,
+            current_prompt_total=len(group),
+            context_size=representative["context_size"],
+            kv_type=representative["kv_type"],
+            n_cpu_moe=representative["n_cpu_moe"],
+            spec_type=representative.get("spec_type") or "none",
+            batch_size=representative.get("batch_size"),
+            ubatch_size=representative.get("ubatch_size"),
+            lifecycle_state="starting server",
+            status_message=f"Launching {server_run_id}.",
         )
+        self._update_tui(clear_prompts=True)
+        for name in prompt_profiles:
+            self._update_tui(prompt=True, prompt_profile=name, status="pending", phase="pending")
         with Monitor(mon_path, self.interval) as monitor:
             with LlamaServerProcess(cmd, self.host, port, raw_path, self.startup_timeout, self.shutdown_timeout) as server:
                 healthy, health_rc, health_text = server.wait_until_ready()
@@ -312,10 +347,29 @@ class LlamaServerBenchmarkRunner:
                     return self._record_startup_failure(group, server_info, raw_path, mon_path, monitor, health_rc, health_text, started)
                 executed = 0
                 prompts_started = time.time()
-                for pending in group:
+                for idx, pending in enumerate(group):
+                    if self.tui_renderer.stop_requested:
+                        break
+                    profile = pending["job"].get("prompt_profile", "default")
+                    self._update_tui(
+                        prompt=True,
+                        prompt_profile=profile,
+                        status="running",
+                        phase="starting",
+                        current_prompt_index=idx + 1,
+                        lifecycle_state="running prompt",
+                        status_message=f"Running {profile}.",
+                    )
                     executed += self._run_request(pending, server_info, raw_path, mon_path, monitor, group_index, executed + 1)
                 prompt_seconds = time.time() - prompts_started
-                print(f"  server prompts_total={format_duration(prompt_seconds)} jobs={executed}")
+                # Update TUI for server completion
+                self._update_tui(
+                    servers_completed=group_index,
+                    elapsed_seconds=prompt_seconds,
+                    eta_seconds=prompt_seconds,
+                    lifecycle_state="server complete",
+                    status_message=f"Finished {server_run_id}.",
+                )
                 return executed
 
     def _record_startup_failure(
@@ -334,10 +388,11 @@ class LlamaServerBenchmarkRunner:
         mon_summary = monitor.summary()
         for pending in group:
             job = pending["job"]
+            run_id = f"{server_info['server_run_id']}-{job.get('prompt_profile', 'default')}"
             row = self._base_row(
                 pending,
                 job,
-                f"{server_info['server_run_id']}-{job.get('prompt_profile', 'default')}",
+                run_id,
                 started,
                 server_info,
                 raw_path,
@@ -357,8 +412,18 @@ class LlamaServerBenchmarkRunner:
             for sample in monitor.samples:
                 append_system_metric(run_path, sample)
             write_run_summary(self.results_dir, self._summary_from_row(row, server_info["server_run_id"]))
-            print(
-                f"  {row['run_id']} status={styled_status(status)} duration={format_duration(row['duration_seconds'])} error={health_text}"
+            # Update TUI for failed prompt
+            self._jobs_completed_total += 1
+            self._update_tui(
+                prompt=True,
+                jobs_completed=self._jobs_completed_total,
+                status=status,
+                prompt_profile=job.get("prompt_profile", "default"),
+                phase=status,
+                duration_seconds=row["duration_seconds"],
+                min_vram_mib=mon_summary.get("min_vram_free_mib"),
+                lifecycle_state=status,
+                status_message=health_text,
             )
         return len(group)
 
@@ -386,6 +451,7 @@ class LlamaServerBenchmarkRunner:
         response_text = ""
         status = "failed"
         returncode = 1
+        prompt_profile = job.get("prompt_profile", "default")
         try:
             with LlamaCppMetricsSampler(
                 f"http://{server_info['host']}:{server_info['port']}",
@@ -459,13 +525,26 @@ class LlamaServerBenchmarkRunner:
             terminal_llamacpp_sample(row["created_at"], parsed, row.get("duration_seconds")),
         )
         write_run_summary(self.results_dir, self._summary_from_row(row, server_info["server_run_id"]))
-        print(
-            f"  {run_id} profile={job.get('prompt_profile', 'default')} "
-            f"status={styled_status(status)} duration={format_duration(row['duration_seconds'])} "
-            f"gen_tok_s={format_gen_tok_s(parsed.get('generation_tok_s'))} "
-            f"min_vram_free_mib={fmt_value(mon_summary.get('min_vram_free_mib'))}"
+        # Update TUI for prompt completion
+        self._jobs_completed_total += 1
+        self._update_tui(
+            prompt=True,
+            jobs_completed=self._jobs_completed_total,
+            status=status,
+            prompt_profile=prompt_profile,
+            phase="done" if status == "success" else status,
+            duration_seconds=row["duration_seconds"],
+            gen_tok_s=parsed.get("generation_tok_s"),
+            prompt_tok_s=parsed.get("prompt_eval_tok_s"),
+            min_vram_mib=mon_summary.get("min_vram_free_mib"),
+            lifecycle_state="running" if status == "success" else status,
+            status_message=f"{prompt_profile}: {status}",
         )
         return 1
+
+    def _update_tui(self, **updates: Any) -> None:
+        """Update TUI state with new values."""
+        self.tui_renderer.update(updates)
 
     def _summary_from_row(self, row: dict[str, Any], batch_id: str) -> dict[str, Any]:
         cfg = row.get("config") or {}
@@ -481,10 +560,9 @@ class LlamaServerBenchmarkRunner:
                 "n_cpu_moe": cfg.get("n_cpu_moe"),
                 "batch_size": cfg.get("batch_size"),
                 "ubatch_size": cfg.get("ubatch_size"),
-                "mtp_enabled": cfg.get("mtp_enabled"),
-                "spec_type": cfg.get("mtp_spec_type") or cfg.get("spec_type"),
-                "spec_draft_n_max": cfg.get("mtp_draft_n_max") or cfg.get("spec_draft_n_max"),
-                "spec_draft_p_min": cfg.get("mtp_draft_p_min") or cfg.get("spec_draft_p_min"),
+                "spec_type": cfg.get("spec_type"),
+                "spec_draft_n_max": cfg.get("spec_draft_n_max"),
+                "spec_draft_p_min": cfg.get("spec_draft_p_min"),
             },
         }
 
@@ -512,7 +590,7 @@ class LlamaServerBenchmarkRunner:
             "server": server_info,
             "config": {
                 **job,
-                "model_hf": model_hf(self.cfg, mtp=job["mtp_enabled"]),
+                "model_hf": model_hf(self.cfg),
                 "generation_tokens": self.cfg["run"].get("generation_tokens", 512),
                 "endpoint": request_endpoint(self.cfg),
                 "seed": self.cfg["run"].get("seed"),

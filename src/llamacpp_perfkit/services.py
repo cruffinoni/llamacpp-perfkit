@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from pathlib import Path
 from typing import Any
 
@@ -8,7 +7,6 @@ import yaml
 from pydantic import ValidationError
 
 from .benchlib import (
-    PROJECT_ROOT,
     build_server_cmd,
     command_template,
     command_to_shell,
@@ -26,8 +24,8 @@ from .benchlib import (
     successful,
     write_features,
 )
-from .models import BenchmarkConfig, BenchOptions, ReportFilters
-from .output import command, error, format_duration, heading, skip, warning
+from .models import BenchmarkConfig, BenchOptions, GenerateOptions, ReportFilters
+from .output import command, error, heading, skip, warning
 from .output import note as info
 from .planner import make_plan, write_plan
 from .reporting import (
@@ -38,6 +36,13 @@ from .run_storage import load_run_rows
 from .server_runner import LlamaServerBenchmarkRunner
 
 
+class F(list[Any]):
+    pass
+
+
+yaml.add_representer(F, lambda dumper, data: dumper.represent_sequence("tag:yaml.org,2002:seq", data, flow_style=True))
+
+
 class ConfigError(Exception):
     pass
 
@@ -45,7 +50,7 @@ class ConfigError(Exception):
 class ConfigLoader:
     def resolve_path(self, value: Path | str) -> Path:
         path = Path(value)
-        return path if path.is_absolute() else PROJECT_ROOT / path
+        return path if path.is_absolute() else Path.cwd() / path
 
     def load(self, value: Path | str) -> dict[str, Any]:
         path = self.resolve_path(value)
@@ -85,8 +90,8 @@ class FeatureDetector:
         print(f"valid_for_bench: {features['valid_for_bench']}")
         for item in features["kv"]["skipped"]:
             print(skip(f"skip kv_type={item['value']}: {item['reason']}"))
-        if not features["mtp"]["supported"]:
-            print(skip(f"skip mtp=true: {features['mtp']['reason']}"))
+        for item in features.get("spec", {}).get("skipped", []):
+            print(skip(f"skip spec_type={item['value']}: {item['reason']}"))
         for item in features.get("extra_args", {}).get("skipped", []):
             print(skip(f"skip extra_arg={item['flag']}: {item['reason']}"))
         return 0 if features["valid_for_bench"] else 2
@@ -110,7 +115,11 @@ class BenchmarkService:
         stale_bin_dir = features and features.get("bin_dir") != str(llama_bin_dir(cfg))
         current_llama_cpp = llama_cpp_git_metadata(cfg)
         feature_llama_cpp = (features or {}).get("llama_cpp") or {}
-        stale_llama_cpp = features and ("llama_cpp" not in features or feature_llama_cpp.get("commit") != current_llama_cpp.get("commit"))
+        stale_llama_cpp = features and (
+            "llama_cpp" not in features
+            or feature_llama_cpp.get("commit") != current_llama_cpp.get("commit")
+            or ("branch" not in feature_llama_cpp and current_llama_cpp.get("branch") is not None)
+        )
         if (
             not features
             or not features.get("valid_for_bench")
@@ -145,10 +154,11 @@ class BenchmarkService:
             mode=options.mode.value if options.mode else None,
             max_runs=max_runs,
             retry_failed=options.retry_failed,
+            force=options.force,
         )
         write_plan(plan, plan_path)
-        self.print_plan(plan, cfg, features, raw_dir)
         if options.dry_run:
+            self.print_plan(plan, cfg, features, raw_dir)
             return 0
 
         planned_new = int(plan.get("estimated_runs", 0))
@@ -166,13 +176,7 @@ class BenchmarkService:
         if options.mode:
             runner_args["mode"] = options.mode.value
         runner = LlamaServerBenchmarkRunner(cfg, _Namespace(runner_args), features, results_dir, raw_dir, mon_dir)
-        started = time.monotonic()
-        executed = runner.run(max_new_runs_val)
-        elapsed = time.monotonic() - started
-        print(heading(f"Benchmarks finished: {executed} request(s) in {format_duration(elapsed)}"))
-        print(info(f"Wrote per-run summaries under {results_dir}"))
-        print(info(f"Wrote {plan_path}"))
-        RecommendationService().run_simple(cfg)
+        runner.run(max_new_runs_val)
         return 0
 
     def print_plan(self, plan: dict[str, Any], cfg: dict[str, Any], features: dict[str, Any], raw_dir: Path) -> None:
@@ -231,7 +235,7 @@ class BenchmarkService:
                     f"[server {group_index}/{len(groups)}] {server_run_id} entries={len(group)} "
                     f"run={counts['run']} reuse={counts['reuse']} skip={counts['skip']} blocked={counts['blocked']} "
                     f"ctx={fmt_value(representative['context_size'])} kv={representative['kv_type']} "
-                    f"n_cpu_moe={representative['n_cpu_moe']} mtp={representative['mtp_enabled']} "
+                    f"n_cpu_moe={representative['n_cpu_moe']} spec={representative.get('spec_type') or 'none'} "
                     f"batch={fmt_value(representative.get('batch_size'))} ubatch={fmt_value(representative.get('ubatch_size'))}"
                 )
             )
@@ -248,7 +252,7 @@ class BenchmarkService:
                 print(
                     f"  request plan_id={item['run_id']} action={item['action']} "
                     f"profile={job.get('prompt_profile', 'default')} hash={item['config_hash']} "
-                    f"kind={item['kind']} risk={item['risk_level']}{action_reason}"
+                    f"spec_type={job.get('spec_type') or 'none'} risk={item['risk_level']}{action_reason}"
                 )
 
 
@@ -271,7 +275,7 @@ class RecommendationService:
             return 1
         safe = [r for r in rows if r.get("stability_status") == "stable"]
         best = max(safe or rows, key=lambda r: r["parsed"]["generation_tok_s"] or 0)
-        fallback_pool = [r for r in safe if not r.get("config", {}).get("mtp_enabled")] or safe or rows
+        fallback_pool = safe or rows
         safe_fallback = max(
             fallback_pool,
             key=lambda r: (r.get("monitor", {}).get("min_vram_free_mib") or 0, r["parsed"]["generation_tok_s"] or 0),
@@ -285,6 +289,94 @@ class RecommendationService:
             )
         )
         return 0
+
+
+class GenerateService:
+    def run(self, options: GenerateOptions) -> int:
+        filename = self._derive_filename(options.model, options.name)
+        output_dir = options.output_dir
+        output_dir.mkdir(parents=True, exist_ok=True)
+        output_path = output_dir / filename
+        config = self._build_config(options)
+        output_path.write_text(yaml.dump(config, sort_keys=False), encoding="utf-8")
+        print(info(f"Wrote {output_path}"))
+        return 0
+
+    @staticmethod
+    def _derive_filename(model: str, name: str | None) -> str:
+        if name:
+            return name if name.endswith(".yaml") else f"{name}.yaml"
+        owner_free = model.rsplit("/", 1)[-1]
+        parts = owner_free.split(":", 1)
+        stem = "-".join(parts).lower() if len(parts) > 1 else parts[0].lower()
+        sanitized = "".join(c if c.isalnum() or c in ".-_" else "-" for c in stem).replace("--", "-")
+        return f"{sanitized}.yaml"
+
+    @staticmethod
+    def _build_config(options: GenerateOptions) -> dict[str, Any]:
+        return {
+            "models": {"hf": options.model},
+            "llama": {
+                "bin_dir": str(options.llama_bin),
+                "preferred_binary": "llama-server",
+                "server": {
+                    "host": "127.0.0.1",
+                    "startup_timeout_seconds": 300,
+                    "shutdown_timeout_seconds": 15,
+                },
+                "extra_args": {
+                    "--temp": options.temp,
+                    "--top-p": options.top_p,
+                    "--top-k": options.top_k,
+                    "--presence-penalty": options.presence_penalty,
+                    "--min-p": options.min_p,
+                    "--n-gpu-layers": options.n_gpu_layers,
+                    "--split-mode": options.split_mode,
+                    "--parallel": options.parallel,
+                },
+            },
+            "prompt": {
+                "profiles": [
+                    {"name": "code_python", "file": "prompts/profiles/code_python.txt"},
+                    {"name": "code_cpp", "file": "prompts/profiles/code_cpp.txt"},
+                    {"name": "long_code_review", "file": "prompts/profiles/long_code_review.txt"},
+                    {"name": "long_prefill_8k", "file": "prompts/profiles/long_prefill_8k.txt"},
+                    {"name": "long_prefill_16k", "file": "prompts/profiles/long_prefill_16k.txt"},
+                    {"name": "long_prefill_32k", "file": "prompts/profiles/long_prefill_32k.txt"},
+                    {"name": "long_prefill_48k", "file": "prompts/profiles/long_prefill_48k.txt"},
+                    {"name": "long_prefill_60k", "file": "prompts/profiles/long_prefill_60k.txt"},
+                ],
+            },
+            "run": {
+                "endpoint": "chat",
+                "generation_tokens": 192,
+                "seed": 42,
+                "min_vram_headroom_gb": 0.5,
+                "monitor_interval_seconds": 1,
+                "timeout_seconds": 900,
+                "cache_prompt": False,
+            },
+            "budget": {
+                "mode": "full",
+                "max_runs": 0,
+                "reuse_existing_results": True,
+                "stop_if_all_remaining_are_risky": True,
+            },
+            "matrix": {
+                "n_cpu_moe": F([0, 6, 12, 18, 24]),
+                "context_size": F([4096, 8192, 16384, 32768]),
+                "kv_type": F(["q8_0"]),
+                "batch_size": F([512]),
+                "ubatch_size": F([512]),
+                "spec_type": F(["draft-mtp"]),
+                "spec_draft_n_max": F([2]),
+                "spec_draft_p_min": F([0.75]),
+            },
+            "output": {
+                "logs_dir": "logs",
+                "results_dir": "runs",
+            },
+        }
 
 
 class _Namespace:

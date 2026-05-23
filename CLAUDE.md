@@ -36,9 +36,9 @@ YAML config → ConfigLoader (validates via Pydantic BenchmarkConfig)
 
 Each mode in `planner.py` applies different selection heuristics on the full job matrix:
 
-- **smoke**: 1-2 jobs — smallest context, first KV type, max n_cpu_moe, optionally 1 MTP variant
-- **quick**: targets a single (context, KV, n_cpu_moe) tuple, prefers non-MTP baselines with MTP comparisons where safe baselines exist
-- **focused**: refines around the best existing safe baseline, expands to neighboring n_cpu_moe values and top 2 KV types
+- **smoke**: 1 job — smallest context, first KV type, highest n_cpu_moe
+- **quick**: targets a single (context, KV, n_cpu_moe) tuple, picks the safest n_cpu_moe value
+- **focused**: refines around the best existing safe configuration, expands to neighboring n_cpu_moe values and top 2 KV types
 - **full**: no filtering — runs the entire Cartesian matrix
 
 ### Result deduplication
@@ -47,7 +47,7 @@ Each job gets a `config_hash` (first 16 chars of SHA-256 of deterministic config
 
 ### Server batching
 
-Jobs are grouped by `server_group_key` (context_size, kv_type, n_cpu_moe, mtp_enabled, mtp_spec_type, mtp_draft_n_max, mtp_draft_p_min). One llama-server process is launched per group and serves multiple HTTP requests with different prompt profiles. This avoids restarting the server for every parameter combination.
+Jobs are grouped by `server_group_key` (context_size, kv_type, n_cpu_moe, spec_type, spec_draft_n_max, spec_draft_p_min, batch_size, ubatch_size). One llama-server process is launched per group and serves multiple HTTP requests with different prompt profiles. This avoids restarting the server for every parameter combination.
 
 ### Monitoring
 
@@ -76,9 +76,9 @@ run_storage.py: discover_run_dirs() → load_run_rows() (reads summary.json + me
 
 Runs `llama-server --help` and `llama-bench --help`, parses output to discover supported flags (n_cpu_moe, cache types, spec types, `--host`, `--port`, etc.). Writes `features.json` + `features.txt` to the results directory. Feature results are reused across runs unless the binary path, extra args, or llama.cpp commit changes.
 
-### MTP (Multi-Token Prediction)
+### Speculative Decoding
 
-Dual model support: `models.baseline_hf` (standard) and `models.mtp_hf` (MTP variant). When MTP is enabled for a job, the MTP model is loaded and spec_type/draft_n_max/draft_p_min are passed to llama-server. Supported spec types are auto-detected from `--spec-type` help output.
+Speculative decoding parameters (`spec_type`, `spec_draft_n_max`, `spec_draft_p_min`) are regular matrix dimensions — like `context_size` or `kv_type`. A single model is used (`models.hf`). When `spec_type` is null, no speculative decoding flags are passed. Supported spec types are auto-detected from `--spec-type` help output.
 
 ### CLI entry point
 

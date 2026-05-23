@@ -190,11 +190,7 @@ class TermColor:
                 return self.sgr(value, "blue")
             return value
         if column == "spec":
-            if value == "base":
-                return self.sgr(value, "green")
-            if value == "mtp":
-                return self.sgr(value, "magenta")
-            if value not in {"-", "base", "mtp"}:
+            if value not in {"-", "none"}:
                 return self.sgr(value, "yellow")
             return value
         if column == "ctx":
@@ -235,10 +231,6 @@ class TermColor:
             "iq4_xs",
         }:
             return self.sgr(token, "cyan")
-        if token == "base":
-            return self.sgr(token, "green")
-        if token == "mtp":
-            return self.sgr(token, "magenta")
         if token in {"draft-mtp", "ngram", "hfd", "speculative"}:
             return self.sgr(token, "yellow")
         if token.endswith(("-it", "-instruct", "-chat")):

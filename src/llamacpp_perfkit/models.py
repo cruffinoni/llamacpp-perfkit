@@ -29,12 +29,6 @@ class SortKey(StrEnum):
     vram_headroom = "vram_headroom"
     peak_vram = "peak_vram"
     context_size = "context_size"
-    mtp_speedup = "mtp_speedup"
-
-
-class MtpMode(StrEnum):
-    on = "on"
-    off = "off"
 
 
 class ServerConfig(BaseModel):
@@ -57,8 +51,7 @@ class LlamaConfig(BaseModel):
 class ModelsConfig(BaseModel):
     model_config = ConfigDict(extra="allow")
 
-    baseline_hf: str | None = None
-    mtp_hf: str | None = None
+    hf: str | None = None
 
 
 class PromptConfig(BaseModel):
@@ -96,7 +89,9 @@ class MatrixConfig(BaseModel):
     kv_type: list[str] = Field(default_factory=list)
     batch_size: list[int] = Field(default_factory=lambda: [1024])
     ubatch_size: list[int] = Field(default_factory=lambda: [1024])
-    mtp: dict[str, Any] = Field(default_factory=dict)
+    spec_type: list[str | None] = Field(default_factory=list)
+    spec_draft_n_max: list[int | None] = Field(default_factory=list)
+    spec_draft_p_min: list[float | None] = Field(default_factory=list)
 
 
 class OutputConfig(BaseModel):
@@ -123,6 +118,7 @@ class BenchOptions(BaseModel):
     max_runs: int | None = None
     limit: int | None = None
     retry_failed: bool = False
+    force: bool = False
     dry_run: bool = False
 
 
@@ -136,7 +132,6 @@ class ReportFilters(BaseModel):
     batch_size: int | None = None
     ubatch_size: int | None = None
     prompt_profile: str | None = None
-    mtp_mode: MtpMode | None = None
     n_cpu_moe: int | None = None
     status: Status | None = None
     sort: SortKey = SortKey.generation_tok_s
@@ -145,13 +140,6 @@ class ReportFilters(BaseModel):
     def as_report_namespace(self) -> Any:
         from types import SimpleNamespace
 
-        mtp_value: bool | None
-        if self.mtp_mode == MtpMode.on:
-            mtp_value = True
-        elif self.mtp_mode == MtpMode.off:
-            mtp_value = False
-        else:
-            mtp_value = None
         return SimpleNamespace(
             runs=str(self.results or self.runs),
             results=str(self.results or self.runs),
@@ -162,9 +150,23 @@ class ReportFilters(BaseModel):
             batch_size=self.batch_size,
             ubatch_size=self.ubatch_size,
             prompt_profile=self.prompt_profile,
-            mtp_mode=mtp_value,
             n_cpu_moe=self.n_cpu_moe,
             status=self.status.value if self.status else None,
             sort=self.sort.value,
             limit=self.limit,
         )
+
+
+class GenerateOptions(BaseModel):
+    output_dir: Path = Path("config")
+    model: str
+    llama_bin: Path
+    name: str | None = None
+    temp: float = 1.0
+    top_p: float = 0.95
+    top_k: int = 20
+    presence_penalty: float = 0.0
+    min_p: float = 0.0
+    n_gpu_layers: int = 99
+    split_mode: str = "none"
+    parallel: int = 1

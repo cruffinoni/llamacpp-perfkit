@@ -1,15 +1,16 @@
 from __future__ import annotations
 
-import contextlib
-import io
 import tempfile
 import unittest
 from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from llamacpp_perfkit.output import configure_color
-from llamacpp_perfkit.reporting import load_rows, print_compare, print_summary
+from llamacpp_perfkit.reporting import (
+    aggregate_server_config_reports,
+    enforce_prompt_profile_comparability,
+    load_rows,
+)
 from llamacpp_perfkit.run_storage import append_llamacpp_metric, append_system_metric, write_run_summary
 
 
@@ -22,7 +23,6 @@ def args(root: Path, **overrides: Any) -> SimpleNamespace:
         "context_size": None,
         "kv_type": None,
         "prompt_profile": None,
-        "mtp_mode": None,
         "n_cpu_moe": None,
         "status": None,
         "sort": "balanced",
@@ -42,7 +42,7 @@ def write_run(root: Path, run_id: str, *, ctx: int, profile: str, gen: float, pr
             "created_at": f"2026-01-01T00:00:0{len(run_id)}Z",
             "model": "model:A",
             "prompt_profile": profile,
-            "server_config": {"context_size": ctx, "kv_type": "q8_0", "n_cpu_moe": 0, "mtp_enabled": False},
+            "server_config": {"context_size": ctx, "kv_type": "q8_0", "n_cpu_moe": 0},
             "status": status,
             "config_hash": run_id,
             "config": {
@@ -51,7 +51,6 @@ def write_run(root: Path, run_id: str, *, ctx: int, profile: str, gen: float, pr
                 "context_size": ctx,
                 "kv_type": "q8_0",
                 "n_cpu_moe": 0,
-                "mtp_enabled": False,
             },
             "duration_seconds": 10.0,
             "response": {"content": "ok"},
@@ -62,25 +61,20 @@ def write_run(root: Path, run_id: str, *, ctx: int, profile: str, gen: float, pr
 
 
 class SummaryRankingTest(unittest.TestCase):
-    def setUp(self) -> None:
-        configure_color(no_color=True)
-
-    def test_summary_groups_and_uses_metric_notation(self) -> None:
+    def test_summary_groups_runs_by_server_config(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             for ctx, gen in ((2048, 100.0), (4096, 90.0)):
                 write_run(root, f"code-{ctx}", ctx=ctx, profile="code", gen=gen, prompt=50.0, vram=4096.0)
                 write_run(root, f"qa-{ctx}", ctx=ctx, profile="qa", gen=gen - 10.0, prompt=45.0, vram=4096.0)
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out):
-                print_summary(load_rows(args(root)), args(root))
-            output = out.getvalue()
+            reports, _ = aggregate_server_config_reports(load_rows(args(root)))
 
-            self.assertIn("Groups: 2 from 4 runs", output)
-            self.assertIn("gen tok/s", output)
-            self.assertIn("g", output)
-            self.assertIn("p10:", output)
-            self.assertIn("stable (2/2)", output)
+            self.assertEqual(len(reports), 2)
+            self.assertEqual(sum(report.total_runs for report in reports), 4)
+            self.assertEqual({report.profiles_seen for report in reports}, {("code", "qa")})
+            self.assertTrue(all(report.status == "stable" for report in reports))
+            self.assertTrue(all(report.generation_tok_s.count == 2 for report in reports))
+            self.assertTrue(all(report.generation_tok_s.p10 is not None for report in reports))
 
     def test_summary_allows_different_prompt_profile_sets(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -89,12 +83,14 @@ class SummaryRankingTest(unittest.TestCase):
             write_run(root, "code-4096", ctx=4096, profile="code", gen=90.0, prompt=45.0, vram=4096.0)
             write_run(root, "qa-4096", ctx=4096, profile="qa", gen=80.0, prompt=40.0, vram=4096.0)
 
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out):
-                print_summary(load_rows(args(root)), args(root))
-            output = out.getvalue()
-            self.assertIn("Groups:", output)
-            self.assertIn("gen tok/s", output)
+            reports, _ = aggregate_server_config_reports(load_rows(args(root)))
+
+            self.assertEqual(len(reports), 2)
+            self.assertEqual({report.key.context_size for report in reports}, {2048, 4096})
+            self.assertEqual(
+                {report.key.context_size: report.profiles_seen for report in reports},
+                {2048: ("code",), 4096: ("code", "qa")},
+            )
 
     def test_compare_refuses_different_prompt_profile_sets(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
@@ -102,23 +98,36 @@ class SummaryRankingTest(unittest.TestCase):
             write_run(root, "base", ctx=2048, profile="code", gen=100.0, prompt=50.0, vram=4096.0)
             write_run(root, "extra", ctx=4096, profile="qa", gen=90.0, prompt=45.0, vram=4096.0)
 
-            with self.assertRaisesRegex(ValueError, "cannot compare configs: prompt profile sets differ"):
-                print_compare(SimpleNamespace(baseline=str(root / "base"), candidates=[str(root / "extra")], limit=20))
+            reports, _ = aggregate_server_config_reports(load_rows(args(root)))
+            with self.assertRaises(ValueError):
+                enforce_prompt_profile_comparability(reports)
 
-    def test_compare_deltas(self) -> None:
+    def test_compare_candidates_keep_metric_values_for_delta_calculation(self) -> None:
         with tempfile.TemporaryDirectory() as tmpdir:
             root = Path(tmpdir)
             write_run(root, "base", ctx=2048, profile="code", gen=100.0, prompt=50.0, vram=4096.0)
             write_run(root, "candidate", ctx=4096, profile="code", gen=110.0, prompt=55.0, vram=5120.0)
-            out = io.StringIO()
-            with contextlib.redirect_stdout(out):
-                print_compare(SimpleNamespace(baseline=str(root / "base"), candidates=[str(root / "candidate")], limit=20))
-            output = out.getvalue()
+            reports, _ = aggregate_server_config_reports(load_rows(args(root)))
+            enforce_prompt_profile_comparability(reports)
+            by_context = {report.key.context_size: report for report in reports}
+            base = by_context[2048]
+            candidate = by_context[4096]
 
-            self.assertIn("base", output)
-            self.assertIn("+10.0%", output)
-            self.assertIn("+1.0G", output)
-            self.assertIn("g110", output)
+            base_gen = base.generation_tok_s.geometric_mean
+            candidate_gen = candidate.generation_tok_s.geometric_mean
+            candidate_prompt = candidate.prompt_tok_s.geometric_mean
+            base_vram = base.min_free_vram
+            candidate_vram = candidate.min_free_vram
+            assert base_gen is not None
+            assert candidate_gen is not None
+            assert candidate_prompt is not None
+            assert base_vram is not None
+            assert candidate_vram is not None
+
+            self.assertAlmostEqual(candidate_gen, 110.0)
+            self.assertAlmostEqual(candidate_prompt, 55.0)
+            self.assertAlmostEqual((candidate_gen - base_gen) / base_gen, 0.1)
+            self.assertEqual(candidate_vram - base_vram, 1024.0)
 
 
 if __name__ == "__main__":

@@ -40,7 +40,6 @@ def row(
             "n_cpu_moe": 0,
             "batch_size": 128,
             "ubatch_size": 32,
-            "mtp_enabled": False,
             "generation_tokens": 16,
             "seed": 42,
         },

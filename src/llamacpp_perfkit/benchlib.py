@@ -98,7 +98,7 @@ def now_iso() -> str:
 
 def relpath(path: str | Path) -> str:
     try:
-        return str(Path(path).resolve().relative_to(PROJECT_ROOT))
+        return str(Path(path).resolve().relative_to(Path.cwd()))
     except ValueError:
         return str(path)
 
@@ -133,8 +133,8 @@ def backend_binary_name(cfg: dict[str, Any]) -> str:
 
 
 def output_dirs(cfg: dict[str, Any]) -> tuple[Path, Path, Path, Path]:
-    logs_dir = PROJECT_ROOT / cfg["output"].get("logs_dir", "logs")
-    results_dir = PROJECT_ROOT / cfg["output"].get("results_dir", "runs")
+    logs_dir = Path.cwd() / cfg["output"].get("logs_dir", "logs")
+    results_dir = Path.cwd() / cfg["output"].get("results_dir", "runs")
     raw_dir = logs_dir / "raw"
     mon_dir = logs_dir / "monitoring"
     for d in (logs_dir, results_dir, raw_dir, mon_dir):
@@ -144,23 +144,21 @@ def output_dirs(cfg: dict[str, Any]) -> tuple[Path, Path, Path, Path]:
 
 def llama_bin_dir(cfg: dict[str, Any]) -> Path:
     value = os.environ.get("LLAMA_BIN_DIR") or cfg["llama"].get("bin_dir", "../llama.cpp/build/bin")
-    return (PROJECT_ROOT / value).resolve() if not Path(value).is_absolute() else Path(value)
+    return (Path.cwd() / value).resolve() if not Path(value).is_absolute() else Path(value)
 
 
-def model_hf(cfg: dict[str, Any], mtp: bool = False) -> str | None:
-    if mtp:
-        return os.environ.get("MODEL_HF_MTP") or cfg["models"].get("mtp_hf")
-    return os.environ.get("MODEL_HF") or cfg["models"].get("baseline_hf")
+def model_hf(cfg: dict[str, Any]) -> str | None:
+    return os.environ.get("MODEL_HF") or cfg["models"].get("hf")
 
 
 def prompt_file(cfg: dict[str, Any]) -> Path:
     value = cfg["prompt"].get("file", "prompts/default.txt")
-    return (PROJECT_ROOT / value).resolve() if not Path(value).is_absolute() else Path(value)
+    return (Path.cwd() / value).resolve() if not Path(value).is_absolute() else Path(value)
 
 
 def resolve_path(value: str | Path) -> Path:
     p = Path(value)
-    return (PROJECT_ROOT / p).resolve() if not p.is_absolute() else p
+    return (Path.cwd() / p).resolve() if not p.is_absolute() else p
 
 
 def prompt_profiles(cfg: dict[str, Any]) -> list[dict[str, Any]]:
@@ -282,10 +280,19 @@ def git_metadata(path: str | Path) -> dict[str, Any]:
             "commit_short": None,
             "error": (stderr or stdout or "git rev-parse --short HEAD failed").strip(),
         }
+    commit_short = stdout.strip()
+    rc, stdout, stderr = run_capture(["git", "-C", repo, "rev-parse", "--abbrev-ref", "HEAD"], timeout=10)
+    if rc != 0:
+        branch = None
+    else:
+        branch = stdout.strip()
+        if branch == "HEAD":
+            branch = None
     return {
         "repo": repo,
         "commit": commit,
-        "commit_short": stdout.strip(),
+        "commit_short": commit_short,
+        "branch": branch,
         "error": None,
     }
 
@@ -305,14 +312,13 @@ def config_hash_payload(cfg: dict[str, Any], job: dict[str, Any]) -> dict[str, A
     return {
         "backend": "server",
         "llama_cpp_commit": llama_cpp_commit_for_hash(cfg),
-        "model_hf": model_hf(cfg, mtp=bool(job.get("mtp_enabled"))),
-        "mtp_enabled": bool(job.get("mtp_enabled")),
+        "model_hf": model_hf(cfg),
         "context_size": job.get("context_size"),
         "kv_type": job.get("kv_type"),
         "n_cpu_moe": job.get("n_cpu_moe"),
-        "mtp_spec_type": job.get("mtp_spec_type"),
-        "mtp_draft_n_max": job.get("mtp_draft_n_max"),
-        "mtp_draft_p_min": job.get("mtp_draft_p_min"),
+        "spec_type": job.get("spec_type"),
+        "spec_draft_n_max": job.get("spec_draft_n_max"),
+        "spec_draft_p_min": job.get("spec_draft_p_min"),
         "batch_size": job.get("batch_size"),
         "ubatch_size": job.get("ubatch_size"),
         "generation_tokens": cfg["run"].get("generation_tokens", 512),
@@ -343,10 +349,9 @@ def row_config_hash(cfg: dict[str, Any], row: dict[str, Any]) -> str | None:
         "n_cpu_moe": rcfg.get("n_cpu_moe"),
         "context_size": rcfg.get("context_size"),
         "kv_type": rcfg.get("kv_type"),
-        "mtp_enabled": bool(rcfg.get("mtp_enabled")),
-        "mtp_spec_type": rcfg.get("mtp_spec_type"),
-        "mtp_draft_n_max": rcfg.get("mtp_draft_n_max"),
-        "mtp_draft_p_min": rcfg.get("mtp_draft_p_min"),
+        "spec_type": rcfg.get("spec_type") or rcfg.get("mtp_spec_type"),
+        "spec_draft_n_max": rcfg.get("spec_draft_n_max") or rcfg.get("mtp_draft_n_max"),
+        "spec_draft_p_min": rcfg.get("spec_draft_p_min") or rcfg.get("mtp_draft_p_min"),
         "batch_size": rcfg.get("batch_size"),
         "ubatch_size": rcfg.get("ubatch_size"),
         "prompt_profile": rcfg.get("prompt_profile", "default"),
@@ -415,7 +420,6 @@ def detect_features(cfg: dict[str, Any]) -> dict[str, Any]:
     server = help_texts.get("llama-server", "")
     active_help = server
     spec_values = allowed_values(active_help, "--spec-type")
-    mtp_values = [v for v in cfg["matrix"].get("mtp", {}).get("spec_type_preference", ["draft-mtp", "mtp"]) if v in spec_values]
     kv_values = allowed_values(active_help, "--cache-type-k") or allowed_values(bench, "--cache-type-k")
     requested_extra_args = normalize_extra_args(cfg)
     usable_extra_args: list[dict[str, Any]] = []
@@ -488,11 +492,15 @@ def detect_features(cfg: dict[str, Any]) -> dict[str, Any]:
                 if kv_values and v not in kv_values
             ],
         },
-        "mtp": {
-            "spec_type_values": spec_values,
-            "supported": bool(mtp_values),
-            "usable_spec_type": mtp_values[0] if mtp_values else None,
-            "reason": None if mtp_values else f"local {backend_binary_name(cfg)} --spec-type does not list draft-mtp or mtp",
+        "spec": {
+            "supported_values": spec_values,
+            "requested_values": [v for v in cfg.get("matrix", {}).get("spec_type", []) if v is not None],
+            "usable_values": [v for v in cfg.get("matrix", {}).get("spec_type", []) if not spec_values or v in spec_values],
+            "skipped": [
+                {"value": v, "reason": "not listed in local --spec-type allowed values"}
+                for v in cfg.get("matrix", {}).get("spec_type", [])
+                if v is not None and spec_values and v not in spec_values
+            ],
         },
         "extra_args": {
             "requested": requested_extra_args,
@@ -540,11 +548,11 @@ def write_features(features: dict[str, Any], results_dir: Path) -> tuple[Path, P
     lines.append(f"  usable_values: {', '.join(features['kv']['usable_values']) or 'none'}")
     for item in features["kv"]["skipped"]:
         lines.append(f"  skipped {item['value']}: {item['reason']}")
-    lines.append("\nMTP:")
-    lines.append(f"  supported: {features['mtp']['supported']}")
-    lines.append(f"  usable_spec_type: {features['mtp']['usable_spec_type']}")
-    if features["mtp"]["reason"]:
-        lines.append(f"  reason: {features['mtp']['reason']}")
+    lines.append("\nSpec:")
+    lines.append(f"  supported_values: {', '.join(features['spec']['supported_values']) or 'unknown'}")
+    lines.append(f"  usable_values: {', '.join(str(v) for v in features['spec']['usable_values']) or 'none'}")
+    for item in features["spec"]["skipped"]:
+        lines.append(f"  skipped {item['value']}: {item['reason']}")
     lines.append("\nExtra server args:")
     if features.get("extra_args", {}).get("server_usable"):
         for item in features["extra_args"]["server_usable"]:
@@ -881,7 +889,7 @@ def build_server_cmd(cfg: dict[str, Any], features: dict[str, Any], job: dict[st
     flags = features["flags"]["llama_server"]
     server_cfg = cfg.get("llama", {}).get("server", {})
     host = server_cfg.get("host", "127.0.0.1")
-    model = model_hf(cfg, mtp=bool(job.get("mtp_enabled")))
+    model = model_hf(cfg)
     cmd: list[str] = [
         str(llama_bin_dir(cfg) / "llama-server"),
         "-hf",
@@ -908,12 +916,12 @@ def build_server_cmd(cfg: dict[str, Any], features: dict[str, Any], job: dict[st
         cmd += [flags["no_webui"]]
     if flags.get("metrics"):
         cmd += [flags["metrics"]]
-    if job.get("mtp_enabled"):
-        cmd += [flags["spec_type"], job["mtp_spec_type"]]
-        if flags.get("spec_draft_n_max") and job.get("mtp_draft_n_max") is not None:
-            cmd += [flags["spec_draft_n_max"], str(job["mtp_draft_n_max"])]
-        if flags.get("spec_draft_p_min") and job.get("mtp_draft_p_min") is not None:
-            cmd += [flags["spec_draft_p_min"], str(job["mtp_draft_p_min"])]
+    if flags.get("spec_type") and job.get("spec_type") is not None:
+        cmd += [flags["spec_type"], job["spec_type"]]
+        if flags.get("spec_draft_n_max") and job.get("spec_draft_n_max") is not None:
+            cmd += [flags["spec_draft_n_max"], str(job["spec_draft_n_max"])]
+        if flags.get("spec_draft_p_min") and job.get("spec_draft_p_min") is not None:
+            cmd += [flags["spec_draft_p_min"], str(job["spec_draft_p_min"])]
     return cmd
 
 
@@ -922,10 +930,9 @@ def server_group_key(job: dict[str, Any]) -> tuple[Any, ...]:
         job.get("context_size"),
         job.get("kv_type"),
         job.get("n_cpu_moe"),
-        bool(job.get("mtp_enabled")),
-        job.get("mtp_spec_type"),
-        job.get("mtp_draft_n_max"),
-        job.get("mtp_draft_p_min"),
+        job.get("spec_type"),
+        job.get("spec_draft_n_max"),
+        job.get("spec_draft_p_min"),
         job.get("batch_size"),
         job.get("ubatch_size"),
     )
@@ -1085,8 +1092,11 @@ def filter_rows(rows: list[dict[str, Any]], args: Any) -> list[dict[str, Any]]:
     out: list[dict[str, Any]] = []
     for row in rows:
         cfg = row.get("config", {})
-        if getattr(args, "model", None) and args.model not in str(cfg.get("model_hf", "")):
-            continue
+        if getattr(args, "model", None):
+            model_hf = str(cfg.get("model_hf", "")).lower().replace("-gguf", "")
+            filter_model = args.model.lower().replace("-gguf", "")
+            if filter_model not in model_hf:
+                continue
         if getattr(args, "quant", None) and args.quant not in str(cfg.get("model_hf", "")).split(":")[-1]:
             continue
         if getattr(args, "context_size", None) is not None and int(cfg.get("context_size", -1)) != args.context_size:
@@ -1094,8 +1104,6 @@ def filter_rows(rows: list[dict[str, Any]], args: Any) -> list[dict[str, Any]]:
         if getattr(args, "kv_type", None) and cfg.get("kv_type") != args.kv_type:
             continue
         if getattr(args, "prompt_profile", None) and cfg.get("prompt_profile", "default") != args.prompt_profile:
-            continue
-        if getattr(args, "mtp_mode", None) is not None and bool(cfg.get("mtp_enabled")) != args.mtp_mode:
             continue
         if getattr(args, "n_cpu_moe", None) is not None and int(cfg.get("n_cpu_moe", -1)) != args.n_cpu_moe:
             continue
@@ -1116,7 +1124,6 @@ def sort_rows(rows: list[dict[str, Any]], sort_key: str) -> list[dict[str, Any]]
         "vram_headroom": "monitor.min_vram_free_mib",
         "peak_vram": "monitor.peak_vram_mib",
         "context_size": "config.context_size",
-        "mtp_speedup": "mtp_compare.speedup_pct",
     }
     field = key_map.get(sort_key, sort_key)
     if sort_key == "latest":

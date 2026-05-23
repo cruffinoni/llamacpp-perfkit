@@ -1,6 +1,5 @@
 models:
-  baseline_hf: "unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_M"
-  mtp_hf: "unsloth/Qwen3.6-35B-A3B-MTP-GGUF:UD-Q4_K_M"
+  hf: "unsloth/Qwen3.6-35B-A3B-GGUF:UD-Q4_K_M"
 
 llama:
   bin_dir: "../llama.cpp/build/bin"
@@ -70,11 +69,9 @@ matrix:
   kv_type: ["q8_0", "turbo3", "turbo4"]
   batch_size: [1024]
   ubatch_size: [1024]
-  mtp:
-    enabled: [false, true]
-    draft_n_max: [1, 2, 3, 4]
-    spec_type_preference: ["draft-mtp", "mtp"]
-    spec_draft_p_min: [null, 0.65, 0.75, 0.85]
+  spec_type: [null, "draft-mtp"]
+  spec_draft_n_max: [null, 1, 2, 3, 4]
+  spec_draft_p_min: [null, 0.65, 0.75, 0.85]
 
 output:
   logs_dir: "logs"
