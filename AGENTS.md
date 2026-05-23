@@ -46,9 +46,6 @@ Run `make test` to validate changes. This runs mypy, ruff, and pytest sequential
 The type checker (mypy) is configured for strict mode with exceptions for dynamic dict patterns.
 The linter (ruff) is configured for PEP 8, import sorting, naming conventions, and pyupgrade.
 
-Pre-commit hooks enforce these checks automatically before every git commit.
-Run `pre-commit run --all-files` to run them manually at any time.
-
 ## Results
 
 Benchmark runs append to `results/runs.jsonl`; do not delete older rows unless explicitly asked. `results/runs.csv` is regenerated from the JSONL after benchmark runs.

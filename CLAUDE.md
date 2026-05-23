@@ -107,7 +107,6 @@ Speculative decoding parameters (`spec_type`, `spec_draft_n_max`, `spec_draft_p_
 python -m venv .venv
 source .venv/bin/activate
 pip install -e ".[dev]"
-pre-commit install
 ```
 
 ### Commands
@@ -117,15 +116,6 @@ pre-commit install
 - `make test` — Run typecheck + lint + pytest (full validation before committing)
 - `make build` — Run full validation then build the package
 - `make clean` — Remove build artifacts and cache files
-
-### Pre-commit Hooks
-
-Pre-commit hooks run automatically on `git commit`. They run:
-1. trailing-whitespace, end-of-file-fixer, check-yaml
-2. ruff linter with auto-fix, ruff formatter
-3. mypy type checker (full project)
-
-To run hooks manually: `pre-commit run --all-files`
 
 ### Coding Standards
 
