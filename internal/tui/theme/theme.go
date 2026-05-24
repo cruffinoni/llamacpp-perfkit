@@ -1,6 +1,10 @@
 package theme
 
-import "github.com/charmbracelet/lipgloss"
+import (
+	"github.com/charmbracelet/lipgloss"
+
+	"github.com/cruffinoni/llamacpp-perfkit/internal/domain"
+)
 
 // Theme defines the complete color scheme for the TUI.
 type Theme struct {
@@ -47,7 +51,6 @@ type Styles struct {
 	ProgressEmpty  lipgloss.Style
 
 	PanelBg lipgloss.Color
-	BaseBg  lipgloss.Color
 	TextFg  lipgloss.Color
 	MutedFg lipgloss.Color
 }
@@ -75,24 +78,23 @@ func NewStyles(t Theme) Styles {
 		ProgressEmpty:  lipgloss.NewStyle().Foreground(lipgloss.Color(t.Muted)).Background(lipgloss.Color(t.Background)),
 
 		PanelBg: lipgloss.Color(t.Panel),
-		BaseBg:  lipgloss.Color(t.Background),
 		TextFg:  lipgloss.Color(t.Text),
 		MutedFg: lipgloss.Color(t.Muted),
 	}
 }
 
 // StatusStyle returns the appropriate color style for a job status.
-func StatusStyle(s Styles, status string) lipgloss.Style {
+func StatusStyle(s Styles, status domain.RunStatus) lipgloss.Style {
 	switch status {
-	case "success":
+	case domain.StatusSuccess:
 		return s.Success
-	case "running":
+	case domain.StatusRunning:
 		return s.Running
-	case "pending":
+	case domain.StatusPending:
 		return s.Muted
-	case "timeout":
+	case domain.StatusTimeout:
 		return s.Warning
-	case "oom", "failed":
+	case domain.StatusOOM, domain.StatusFailed:
 		return s.Error
 	default:
 		return s.Muted
@@ -100,15 +102,15 @@ func StatusStyle(s Styles, status string) lipgloss.Style {
 }
 
 // PhaseStyle returns the appropriate color style for a job phase.
-func PhaseStyle(s Styles, phase string) lipgloss.Style {
+func PhaseStyle(s Styles, phase domain.Phase) lipgloss.Style {
 	switch phase {
-	case "prefill", "generating", "starting":
+	case domain.PhasePrefill, domain.PhaseGenerating, domain.PhaseStarting:
 		return s.Info
-	case "done", "pending", "-":
+	case domain.PhaseDone, domain.PhasePending, "-":
 		return s.Muted
-	case "timeout":
+	case domain.PhaseTimeout:
 		return s.Warning
-	case "oom", "failed":
+	case domain.PhaseOOM, domain.PhaseFailed:
 		return s.Error
 	default:
 		return s.Muted

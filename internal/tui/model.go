@@ -7,6 +7,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/components"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/sim"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/theme"
@@ -128,12 +129,12 @@ func (m model) Init() tea.Cmd {
 
 // Update handles messages for the bubble tea model and returns an updated model.
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
-	switch msg := msg.(type) {
+	switch t := msg.(type) {
 	case tea.WindowSizeMsg:
-		m.width = msg.Width
-		m.height = msg.Height
+		m.width = t.Width
+		m.height = t.Height
 	case tea.KeyMsg:
-		switch msg.String() {
+		switch t.String() {
 		case keyCtrlC, keyQ, keyEsc:
 			return m, tea.Quit
 		case keySpace:
@@ -152,15 +153,15 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 	case viewmodel.StateUpdate:
-		if msg.Apply != nil {
-			msg.Apply(&m.state)
+		if t.Apply != nil {
+			t.Apply(&m.state)
 		}
 		return m, waitUpdate(m.updates)
 	case doneMsg:
 		m.done = true
-		m.err = msg.err
-		if msg.err != nil {
-			m.state.StatusMessage = msg.err.Error()
+		m.err = t.err
+		if t.err != nil {
+			m.state.StatusMessage = t.err.Error()
 		}
 		return m, tea.Quit
 	case tickMsg:
@@ -175,6 +176,7 @@ func (m model) View() string {
 	if m.width == 0 {
 		return content
 	}
+
 	lines := strings.Split(content, "\n")
 	padStyle := m.styles.Base
 	bgLine := padStyle.Width(m.width).Render("")

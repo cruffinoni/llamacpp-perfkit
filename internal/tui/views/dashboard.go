@@ -158,8 +158,8 @@ func PromptTable(state viewmodel.BenchmarkTUIState, s theme.Styles) string {
 	for _, job := range state.PromptJobs {
 		t.AddRow(
 			components.Cell{Text: job.Profile},
-			components.Cell{Text: job.Status, Style: theme.StatusStyle(s, job.Status)},
-			components.Cell{Text: job.Phase, Style: theme.PhaseStyle(s, job.Phase)},
+			components.Cell{Text: job.Status.String(), Style: theme.StatusStyle(s, job.Status)},
+			components.Cell{Text: string(job.Phase), Style: theme.PhaseStyle(s, job.Phase)},
 			components.Cell{Text: formatDuration(job.DurationSeconds)},
 			components.Cell{Text: formatTokS(job.GenTokS, "gen")},
 			components.Cell{Text: formatTokS(job.PromptTokS, "prompt")},

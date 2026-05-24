@@ -33,7 +33,7 @@ func (a tuiAdapter) BeginGroup(server serverExecution, group []domain.PlannedRun
 		}
 		s.PromptJobs = nil
 		for _, item := range group {
-			s.UpsertPrompt(viewmodel.PromptJobView{Profile: item.Job.PromptProfile.Name, Status: "pending", Phase: "-"})
+			s.UpsertPrompt(viewmodel.PromptJobView{Profile: item.Job.PromptProfile.Name, Status: domain.StatusPending, Phase: "-"})
 		}
 		s.LifecycleState = "starting server"
 		s.StatusMessage = "Launching " + server.ID + "."
@@ -47,7 +47,7 @@ func (a tuiAdapter) BeginPrompt(item domain.PlannedRun, promptIndex int) {
 		s.Progress.CurrentPrompt = promptIndex + 1
 		s.LifecycleState = "running prompt"
 		s.StatusMessage = "Running " + item.Job.PromptProfile.Name + "."
-		s.UpsertPrompt(viewmodel.PromptJobView{Profile: item.Job.PromptProfile.Name, Status: "running", Phase: "starting"})
+		s.UpsertPrompt(viewmodel.PromptJobView{Profile: item.Job.PromptProfile.Name, Status: domain.StatusRunning, Phase: domain.PhaseStarting})
 	})
 }
 
@@ -58,7 +58,7 @@ func (a tuiAdapter) CompletePrompt(item domain.PlannedRun, result requestResult,
 		s.ElapsedSeconds = time.Since(a.started).Seconds()
 		s.UpsertPrompt(viewmodel.PromptJobView{
 			Profile:         item.Job.PromptProfile.Name,
-			Status:          string(result.Status),
+			Status:          result.Status,
 			Phase:           phaseForStatus(result.Status),
 			DurationSeconds: &result.Duration,
 			GenTokS:         result.Loaded.LlamaSummary.GenerationTokS,
@@ -74,7 +74,7 @@ func (a tuiAdapter) StartupFailedPrompt(item domain.PlannedRun, errText string, 
 	a.send(func(s *viewmodel.BenchmarkTUIState) {
 		s.Progress.JobsCompleted = jobsCompleted
 		s.ElapsedSeconds = time.Since(a.started).Seconds()
-		s.UpsertPrompt(viewmodel.PromptJobView{Profile: item.Job.PromptProfile.Name, Status: "failed", Phase: "failed", DurationSeconds: &duration})
+		s.UpsertPrompt(viewmodel.PromptJobView{Profile: item.Job.PromptProfile.Name, Status: domain.StatusFailed, Phase: domain.PhaseFailed, DurationSeconds: &duration})
 		s.StatusMessage = errText
 	})
 }

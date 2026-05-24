@@ -15,6 +15,26 @@ const (
 	StatusTimeout     RunStatus = "timeout"
 	StatusUnsupported RunStatus = "unsupported"
 	StatusUnknown     RunStatus = "unknown"
+	StatusPending     RunStatus = "pending"
+	StatusRunning     RunStatus = "running"
+)
+
+func (s RunStatus) String() string {
+	return string(s)
+}
+
+// Phase represents a stage in a prompt's lifecycle for display.
+type Phase string
+
+const (
+	PhasePending    Phase = "pending"
+	PhaseStarting   Phase = "starting"
+	PhasePrefill    Phase = "prefill"
+	PhaseGenerating Phase = "generating"
+	PhaseDone       Phase = "done"
+	PhaseTimeout    Phase = "timeout"
+	PhaseOOM        Phase = "oom"
+	PhaseFailed     Phase = "failed"
 )
 
 // RunStatusInfo holds the detailed status flags for a benchmark run.

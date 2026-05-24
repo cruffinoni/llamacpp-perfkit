@@ -86,18 +86,18 @@ Speculative decoding parameters (`spec_type`, `spec_draft_n_max`, `spec_draft_p_
 
 ## Key modules
 
-| Module | Role |
-|---|---|
-| `cli.py` | Typer CLI with `report` sub-command group |
-| `models.py` | Pydantic config models (`BenchmarkConfig`, `ReportFilters`, etc.) |
-| `benchlib.py` | Shared helpers: config loading, feature detection, hash, monitoring, HTTP, parsing |
-| `planner.py` | Benchmark plan generation: matrix expansion, mode selection, risk assessment |
-| `server_runner.py` | llama-server process lifecycle, HTTP request execution, metric collection |
-| `services.py` | Orchestration: `BenchmarkService`, `FeatureDetector`, `ConfigLoader`, `RecommendationService` |
-| `reporting.py` | Result aggregation, tabular display, compare logic |
-| `run_storage.py` | Run directory layout, summary/metric read/write, row assembly |
-| `stats.py` | Statistical summaries (geometric mean, percentiles) |
-| `output.py` | Terminal coloring, duration formatting, status styles |
+| Module             | Role                                                                                          |
+|--------------------|-----------------------------------------------------------------------------------------------|
+| `cli.py`           | Typer CLI with `report` sub-command group                                                     |
+| `models.py`        | Pydantic config models (`BenchmarkConfig`, `ReportFilters`, etc.)                             |
+| `benchlib.py`      | Shared helpers: config loading, feature detection, hash, monitoring, HTTP, parsing            |
+| `planner.py`       | Benchmark plan generation: matrix expansion, mode selection, risk assessment                  |
+| `server_runner.py` | llama-server process lifecycle, HTTP request execution, metric collection                     |
+| `services.py`      | Orchestration: `BenchmarkService`, `FeatureDetector`, `ConfigLoader`, `RecommendationService` |
+| `reporting.py`     | Result aggregation, tabular display, compare logic                                            |
+| `run_storage.py`   | Run directory layout, summary/metric read/write, row assembly                                 |
+| `stats.py`         | Statistical summaries (geometric mean, percentiles)                                           |
+| `output.py`        | Terminal coloring, duration formatting, status styles                                         |
 
 ## Development
 

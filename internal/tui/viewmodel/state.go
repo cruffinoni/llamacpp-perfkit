@@ -1,5 +1,7 @@
 package viewmodel
 
+import "github.com/cruffinoni/llamacpp-perfkit/internal/domain"
+
 // BuildInfoView holds build metadata displayed in the benchmark header.
 type BuildInfoView struct {
 	CommitShort string
@@ -31,8 +33,8 @@ type CurrentServerView struct {
 // PromptJobView represents a single prompt profile's execution status.
 type PromptJobView struct {
 	Profile         string
-	Status          string
-	Phase           string
+	Status          domain.RunStatus
+	Phase           domain.Phase
 	DurationSeconds *float64
 	GenTokS         *float64
 	PromptTokS      *float64

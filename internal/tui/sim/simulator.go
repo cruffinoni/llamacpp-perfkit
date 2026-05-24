@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"time"
 
+	"github.com/cruffinoni/llamacpp-perfkit/internal/domain"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/viewmodel"
 )
 
@@ -158,22 +159,22 @@ func (s *Simulator) applyTo(vs *viewmodel.BenchmarkTUIState) {
 		pj := viewmodel.PromptJobView{Profile: sp.Profile}
 		if i < promptIdx {
 			last := sp.Steps[len(sp.Steps)-1]
-			pj.Status = string(last.Phase)
-			pj.Phase = string(last.Phase)
+			pj.Status = domain.RunStatus(last.Phase)
+			pj.Phase = last.Phase
 			pj.DurationSeconds = &last.DurationSec
 			pj.GenTokS = last.GenTokS
 			pj.PromptTokS = last.PromptTokS
 			pj.MinVRAMMiB = last.MinVRAMMiB
 		} else if i == promptIdx && s.state != stateDone {
 			cs := sp.Steps[stepIdx]
-			pj.Status = "running"
-			pj.Phase = string(cs.Phase)
+			pj.Status = domain.StatusRunning
+			pj.Phase = cs.Phase
 			pj.DurationSeconds = &cs.DurationSec
 			pj.GenTokS = cs.GenTokS
 			pj.PromptTokS = cs.PromptTokS
 			pj.MinVRAMMiB = cs.MinVRAMMiB
 		} else {
-			pj.Status = "pending"
+			pj.Status = domain.StatusPending
 			pj.Phase = "-"
 		}
 		vs.PromptJobs = append(vs.PromptJobs, pj)

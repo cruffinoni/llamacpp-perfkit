@@ -46,11 +46,11 @@ func intValue(value *int) int {
 	return *value
 }
 
-func phaseForStatus(status domain.RunStatus) string {
+func phaseForStatus(status domain.RunStatus) domain.Phase {
 	if status == domain.StatusSuccess {
-		return "done"
+		return domain.PhaseDone
 	}
-	return string(status)
+	return domain.Phase(status)
 }
 
 func estimateETA(done, total int, elapsed float64) float64 {

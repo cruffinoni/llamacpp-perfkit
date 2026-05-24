@@ -1,6 +1,8 @@
 package sim
 
-// MixedScenario returns the default benchmark simulation scenario with 3
+import "github.com/cruffinoni/llamacpp-perfkit/internal/domain"
+
+// MixedScenarioreturns the default benchmark simulation scenario with 3
 // servers, 13 prompts total, covering success, timeout, OOM, failed, running,
 // and pending states.
 func MixedScenario() Scenario {
@@ -78,10 +80,10 @@ func codePythonSuccess() Prompt {
 	return Prompt{
 		Profile: "code_python",
 		Steps: []Step{
-			{Phase: PhaseStarting, DurationSec: 0.10, MinVRAMMiB: m1, TickCount: 2},
-			{Phase: PhasePrefill, DurationSec: 0.75, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 4},
-			{Phase: PhaseGenerating, DurationSec: 2.10, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 8},
-			{Phase: PhaseDone, DurationSec: 2.70, PromptTokS: pDone, GenTokS: gDone, MinVRAMMiB: m4, TickCount: 1},
+			{Phase: domain. PhaseStarting, DurationSec: 0.10, MinVRAMMiB: m1, TickCount: 2},
+			{Phase: domain. PhasePrefill, DurationSec: 0.75, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 4},
+			{Phase: domain. PhaseGenerating, DurationSec: 2.10, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 8},
+			{Phase: domain. PhaseDone, DurationSec: 2.70, PromptTokS: pDone, GenTokS: gDone, MinVRAMMiB: m4, TickCount: 1},
 		},
 	}
 }
@@ -93,10 +95,10 @@ func codeCppSuccess() Prompt {
 	return Prompt{
 		Profile: "code_cpp",
 		Steps: []Step{
-			{Phase: PhaseStarting, DurationSec: 0.12, MinVRAMMiB: m1, TickCount: 2},
-			{Phase: PhasePrefill, DurationSec: 0.90, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 5},
-			{Phase: PhaseGenerating, DurationSec: 2.50, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 10},
-			{Phase: PhaseDone, DurationSec: 3.21, PromptTokS: pDone, GenTokS: gDone, MinVRAMMiB: m4, TickCount: 1},
+			{Phase: domain. PhaseStarting, DurationSec: 0.12, MinVRAMMiB: m1, TickCount: 2},
+			{Phase: domain. PhasePrefill, DurationSec: 0.90, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 5},
+			{Phase: domain. PhaseGenerating, DurationSec: 2.50, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 10},
+			{Phase: domain. PhaseDone, DurationSec: 3.21, PromptTokS: pDone, GenTokS: gDone, MinVRAMMiB: m4, TickCount: 1},
 		},
 	}
 }
@@ -108,10 +110,10 @@ func longCodeReviewSuccess() Prompt {
 	return Prompt{
 		Profile: "long_code_review",
 		Steps: []Step{
-			{Phase: PhaseStarting, DurationSec: 0.15, MinVRAMMiB: m1, TickCount: 3},
-			{Phase: PhasePrefill, DurationSec: 1.10, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 6},
-			{Phase: PhaseGenerating, DurationSec: 2.60, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 12},
-			{Phase: PhaseDone, DurationSec: 3.25, PromptTokS: pDone, GenTokS: gDone, MinVRAMMiB: m4, TickCount: 1},
+			{Phase: domain. PhaseStarting, DurationSec: 0.15, MinVRAMMiB: m1, TickCount: 3},
+			{Phase: domain. PhasePrefill, DurationSec: 1.10, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 6},
+			{Phase: domain. PhaseGenerating, DurationSec: 2.60, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 12},
+			{Phase: domain. PhaseDone, DurationSec: 3.25, PromptTokS: pDone, GenTokS: gDone, MinVRAMMiB: m4, TickCount: 1},
 		},
 	}
 }
@@ -123,10 +125,10 @@ func longPrefill32kSuccess() Prompt {
 	return Prompt{
 		Profile: "long_prefill_32k",
 		Steps: []Step{
-			{Phase: PhaseStarting, DurationSec: 0.18, MinVRAMMiB: m1, TickCount: 2},
-			{Phase: PhasePrefill, DurationSec: 1.50, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 6},
-			{Phase: PhaseGenerating, DurationSec: 3.10, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 10},
-			{Phase: PhaseDone, DurationSec: 3.85, PromptTokS: pDone, GenTokS: gDone, MinVRAMMiB: m4, TickCount: 1},
+			{Phase: domain. PhaseStarting, DurationSec: 0.18, MinVRAMMiB: m1, TickCount: 2},
+			{Phase: domain. PhasePrefill, DurationSec: 1.50, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 6},
+			{Phase: domain. PhaseGenerating, DurationSec: 3.10, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 10},
+			{Phase: domain. PhaseDone, DurationSec: 3.85, PromptTokS: pDone, GenTokS: gDone, MinVRAMMiB: m4, TickCount: 1},
 		},
 	}
 }
@@ -138,10 +140,10 @@ func longPrefill60kSuccess() Prompt {
 	return Prompt{
 		Profile: "long_prefill_60k",
 		Steps: []Step{
-			{Phase: PhaseStarting, DurationSec: 0.25, MinVRAMMiB: m1, TickCount: 2},
-			{Phase: PhasePrefill, DurationSec: 2.20, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 6},
-			{Phase: PhaseGenerating, DurationSec: 4.30, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 10},
-			{Phase: PhaseDone, DurationSec: 5.10, PromptTokS: pDone, GenTokS: gDone, MinVRAMMiB: m4, TickCount: 1},
+			{Phase: domain. PhaseStarting, DurationSec: 0.25, MinVRAMMiB: m1, TickCount: 2},
+			{Phase: domain. PhasePrefill, DurationSec: 2.20, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 6},
+			{Phase: domain. PhaseGenerating, DurationSec: 4.30, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 10},
+			{Phase: domain. PhaseDone, DurationSec: 5.10, PromptTokS: pDone, GenTokS: gDone, MinVRAMMiB: m4, TickCount: 1},
 		},
 	}
 }
@@ -153,10 +155,10 @@ func chatTranslateSuccess() Prompt {
 	return Prompt{
 		Profile: "chat_translate",
 		Steps: []Step{
-			{Phase: PhaseStarting, DurationSec: 0.11, MinVRAMMiB: m1, TickCount: 2},
-			{Phase: PhasePrefill, DurationSec: 0.60, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 4},
-			{Phase: PhaseGenerating, DurationSec: 1.80, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 6},
-			{Phase: PhaseDone, DurationSec: 2.35, PromptTokS: pDone, GenTokS: gDone, MinVRAMMiB: m4, TickCount: 1},
+			{Phase: domain. PhaseStarting, DurationSec: 0.11, MinVRAMMiB: m1, TickCount: 2},
+			{Phase: domain. PhasePrefill, DurationSec: 0.60, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 4},
+			{Phase: domain. PhaseGenerating, DurationSec: 1.80, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 6},
+			{Phase: domain. PhaseDone, DurationSec: 2.35, PromptTokS: pDone, GenTokS: gDone, MinVRAMMiB: m4, TickCount: 1},
 		},
 	}
 }
@@ -170,10 +172,10 @@ func longPrefill8kTimeout() Prompt {
 	return Prompt{
 		Profile: "long_prefill_8k",
 		Steps: []Step{
-			{Phase: PhaseStarting, DurationSec: 0.14, MinVRAMMiB: m1, TickCount: 2},
-			{Phase: PhasePrefill, DurationSec: 1.80, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 8},
-			{Phase: PhaseGenerating, DurationSec: 8.50, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 4},
-			{Phase: PhaseTimeout, DurationSec: 30.00, TickCount: 1},
+			{Phase: domain. PhaseStarting, DurationSec: 0.14, MinVRAMMiB: m1, TickCount: 2},
+			{Phase: domain. PhasePrefill, DurationSec: 1.80, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 8},
+			{Phase: domain. PhaseGenerating, DurationSec: 8.50, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 4},
+			{Phase: domain. PhaseTimeout, DurationSec: 30.00, TickCount: 1},
 		},
 	}
 }
@@ -185,10 +187,10 @@ func longPrefill48kOOM() Prompt {
 	return Prompt{
 		Profile: "long_prefill_48k",
 		Steps: []Step{
-			{Phase: PhaseStarting, DurationSec: 0.22, MinVRAMMiB: m1, TickCount: 2},
-			{Phase: PhasePrefill, DurationSec: 2.00, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 4},
-			{Phase: PhaseGenerating, DurationSec: 4.20, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 3},
-			{Phase: PhaseOOM, DurationSec: 5.10, TickCount: 1},
+			{Phase: domain. PhaseStarting, DurationSec: 0.22, MinVRAMMiB: m1, TickCount: 2},
+			{Phase: domain. PhasePrefill, DurationSec: 2.00, PromptTokS: pPrefill, MinVRAMMiB: m2, TickCount: 4},
+			{Phase: domain. PhaseGenerating, DurationSec: 4.20, PromptTokS: pGen, GenTokS: gGen, MinVRAMMiB: m3, TickCount: 3},
+			{Phase: domain. PhaseOOM, DurationSec: 5.10, TickCount: 1},
 		},
 	}
 }
@@ -198,8 +200,8 @@ func summarizeDocFailed() Prompt {
 	return Prompt{
 		Profile: "summarize_doc",
 		Steps: []Step{
-			{Phase: PhaseStarting, DurationSec: 0.08, MinVRAMMiB: m1, TickCount: 2},
-			{Phase: PhaseFailed, DurationSec: 0.42, TickCount: 1},
+			{Phase: domain. PhaseStarting, DurationSec: 0.08, MinVRAMMiB: m1, TickCount: 2},
+			{Phase: domain. PhaseFailed, DurationSec: 0.42, TickCount: 1},
 		},
 	}
 }

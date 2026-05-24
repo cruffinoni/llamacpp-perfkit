@@ -40,7 +40,7 @@ func TestTUIAdapterStateTransitions(t *testing.T) {
 	require.NotNil(t, state.CurrentServer)
 	assert.Equal(t, "server-a", state.CurrentServer.ID)
 	require.Len(t, state.PromptJobs, 1)
-	assert.Equal(t, "success", state.PromptJobs[0].Status)
+	assert.Equal(t, domain.StatusSuccess, state.PromptJobs[0].Status)
 	require.NotNil(t, state.PromptJobs[0].GenTokS)
 	assert.InDelta(t, 42.0, *state.PromptJobs[0].GenTokS, 0.0001)
 	assert.Equal(t, "complete", state.LifecycleState)
@@ -62,8 +62,8 @@ func TestTUIAdapterStartupFailedPrompt(t *testing.T) {
 
 	state := applyAll(updates)
 	require.Len(t, state.PromptJobs, 1)
-	assert.Equal(t, "failed", state.PromptJobs[0].Status)
-	assert.Equal(t, "failed", state.PromptJobs[0].Phase)
+	assert.Equal(t, domain.StatusFailed, state.PromptJobs[0].Status)
+	assert.Equal(t, domain.PhaseFailed, state.PromptJobs[0].Phase)
 	assert.Equal(t, 5, state.Progress.JobsCompleted)
 }
 

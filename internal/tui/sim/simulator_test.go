@@ -8,6 +8,7 @@ import (
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 
+	"github.com/cruffinoni/llamacpp-perfkit/internal/domain"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/viewmodel"
 )
 
@@ -25,10 +26,10 @@ func TestAdvance(t *testing.T) {
 					ID: "srv-1", Prompts: []Prompt{{
 						Profile: "test_prompt",
 						Steps: []Step{
-							{Phase: PhaseStarting, TickCount: 2},
-							{Phase: PhasePrefill, TickCount: 3},
-							{Phase: PhaseGenerating, TickCount: 5},
-							{Phase: PhaseDone, TickCount: 1},
+							{Phase: domain. PhaseStarting, TickCount: 2},
+							{Phase: domain. PhasePrefill, TickCount: 3},
+							{Phase: domain. PhaseGenerating, TickCount: 5},
+							{Phase: domain. PhaseDone, TickCount: 1},
 						},
 					}},
 				}},
@@ -45,11 +46,11 @@ func TestAdvance(t *testing.T) {
 				ModelName: "test",
 				Configs: []Server{
 					{ID: "srv-1", Prompts: []Prompt{
-						{Profile: "p1", Steps: []Step{{Phase: PhaseDone, TickCount: 1}}},
-						{Profile: "p2", Steps: []Step{{Phase: PhaseDone, TickCount: 1}}},
+						{Profile: "p1", Steps: []Step{{Phase: domain. PhaseDone, TickCount: 1}}},
+						{Profile: "p2", Steps: []Step{{Phase: domain. PhaseDone, TickCount: 1}}},
 					}},
 					{ID: "srv-2", Prompts: []Prompt{
-						{Profile: "p3", Steps: []Step{{Phase: PhaseDone, TickCount: 1}}},
+						{Profile: "p3", Steps: []Step{{Phase: domain. PhaseDone, TickCount: 1}}},
 					}},
 				},
 			},
@@ -65,7 +66,7 @@ func TestAdvance(t *testing.T) {
 				ModelName: "test",
 				Configs: []Server{{
 					ID: "srv-1", Prompts: []Prompt{
-						{Profile: "p1", Steps: []Step{{Phase: PhaseDone, TickCount: 1}}},
+						{Profile: "p1", Steps: []Step{{Phase: domain. PhaseDone, TickCount: 1}}},
 					},
 				}},
 			},
@@ -108,7 +109,7 @@ func TestPauseResume(t *testing.T) {
 		ModelName: "test",
 		Configs: []Server{{
 			ID: "srv-1", Prompts: []Prompt{{
-				Profile: "p1", Steps: []Step{{Phase: PhaseStarting, TickCount: 10}},
+				Profile: "p1", Steps: []Step{{Phase: domain. PhaseStarting, TickCount: 10}},
 			}},
 		}},
 	}, false)
@@ -138,8 +139,8 @@ func TestReset(t *testing.T) {
 		ModelName: "test",
 		Configs: []Server{{
 			ID: "srv-1", Prompts: []Prompt{
-				{Profile: "p1", Steps: []Step{{Phase: PhaseDone, TickCount: 1}}},
-				{Profile: "p2", Steps: []Step{{Phase: PhaseDone, TickCount: 1}}},
+				{Profile: "p1", Steps: []Step{{Phase: domain. PhaseDone, TickCount: 1}}},
+				{Profile: "p2", Steps: []Step{{Phase: domain. PhaseDone, TickCount: 1}}},
 			},
 		}},
 	}, false)
@@ -182,11 +183,11 @@ func TestBuildUpdate(t *testing.T) {
 				ModelName: "test-model",
 				Configs: []Server{
 					{ID: "srv-1", Prompts: []Prompt{
-						{Profile: "p1", Steps: []Step{{Phase: PhaseDone, TickCount: 1}}},
-						{Profile: "p2", Steps: []Step{{Phase: PhaseDone, TickCount: 1}}},
+						{Profile: "p1", Steps: []Step{{Phase: domain. PhaseDone, TickCount: 1}}},
+						{Profile: "p2", Steps: []Step{{Phase: domain. PhaseDone, TickCount: 1}}},
 					}},
 					{ID: "srv-2", Prompts: []Prompt{
-						{Profile: "p3", Steps: []Step{{Phase: PhaseDone, TickCount: 1}}},
+						{Profile: "p3", Steps: []Step{{Phase: domain. PhaseDone, TickCount: 1}}},
 					}},
 				},
 			},
@@ -210,9 +211,9 @@ func TestBuildUpdate(t *testing.T) {
 					Prompts: []Prompt{{
 						Profile: "code_python",
 						Steps: []Step{
-							{Phase: PhasePrefill, DurationSec: 0.75, PromptTokS: new(812.0), TickCount: 3},
-							{Phase: PhaseGenerating, DurationSec: 2.1, GenTokS: new(78.0), TickCount: 5},
-							{Phase: PhaseDone, DurationSec: 2.7, TickCount: 1},
+							{Phase: domain. PhasePrefill, DurationSec: 0.75, PromptTokS: new(812.0), TickCount: 3},
+							{Phase: domain. PhaseGenerating, DurationSec: 2.1, GenTokS: new(78.0), TickCount: 5},
+							{Phase: domain. PhaseDone, DurationSec: 2.7, TickCount: 1},
 						},
 					}},
 				}},
@@ -221,8 +222,8 @@ func TestBuildUpdate(t *testing.T) {
 			verify: func(t *testing.T, s viewmodel.BenchmarkTUIState) {
 				require.Len(t, s.PromptJobs, 1)
 				job := s.PromptJobs[0]
-				assert.Equal(t, "running", job.Status)
-				assert.Equal(t, "prefill", job.Phase)
+				assert.Equal(t, domain.StatusRunning, job.Status)
+				assert.Equal(t, domain.PhasePrefill, job.Phase)
 				assert.NotNil(t, job.PromptTokS)
 				assert.InDelta(t, 812.0, *job.PromptTokS, 0.0001)
 			},
@@ -232,7 +233,7 @@ func TestBuildUpdate(t *testing.T) {
 				ModelName: "test",
 				Configs: []Server{{
 					ID: "srv-1", Prompts: []Prompt{
-						{Profile: "p1", Steps: []Step{{Phase: PhaseDone, TickCount: 1}}},
+						{Profile: "p1", Steps: []Step{{Phase: domain. PhaseDone, TickCount: 1}}},
 					},
 				}},
 			},
@@ -263,7 +264,7 @@ func TestLifecycleStates(t *testing.T) {
 		ModelName: "test",
 		Configs: []Server{{
 			ID: "srv-1", Prompts: []Prompt{
-				{Profile: "p1", Steps: []Step{{Phase: PhaseDone, TickCount: 1}}},
+				{Profile: "p1", Steps: []Step{{Phase: domain. PhaseDone, TickCount: 1}}},
 			},
 		}},
 	}
@@ -311,7 +312,7 @@ func TestBenchmarkFunc(t *testing.T) {
 			ModelName: "test",
 			Configs: []Server{{
 				ID: "srv-1", Prompts: []Prompt{
-					{Profile: "p1", Steps: []Step{{Phase: PhaseDone, TickCount: 1}}},
+					{Profile: "p1", Steps: []Step{{Phase: domain. PhaseDone, TickCount: 1}}},
 				},
 			}},
 		}
@@ -341,7 +342,7 @@ func TestBenchmarkFunc(t *testing.T) {
 			ModelName: "test",
 			Configs: []Server{{
 				ID: "srv-1", Prompts: []Prompt{
-					{Profile: "p1", Steps: []Step{{Phase: PhaseDone, TickCount: 2}}},
+					{Profile: "p1", Steps: []Step{{Phase: domain. PhaseDone, TickCount: 2}}},
 				},
 			}},
 		}

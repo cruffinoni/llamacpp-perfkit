@@ -1,24 +1,12 @@
 package sim
 
-// Phase represents a stage in a prompt's lifecycle for display.
-type Phase string
-
-const (
-	PhasePending    Phase = "pending"
-	PhaseStarting   Phase = "starting"
-	PhasePrefill    Phase = "prefill"
-	PhaseGenerating Phase = "generating"
-	PhaseDone       Phase = "done"
-	PhaseTimeout    Phase = "timeout"
-	PhaseOOM        Phase = "oom"
-	PhaseFailed     Phase = "failed"
-)
+import "github.com/cruffinoni/llamacpp-perfkit/internal/domain"
 
 // Step describes one advancement step for a scripted prompt. Each step
 // specifies how many sim-ticks it lasts, which phase/status to display, and
 // what metrics to show.
 type Step struct {
-	Phase       Phase
+	Phase       domain.Phase
 	DurationSec float64
 	GenTokS     *float64
 	PromptTokS  *float64
