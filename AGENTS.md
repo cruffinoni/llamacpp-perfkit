@@ -28,7 +28,7 @@ Use default config behavior unless a non-default config is required.
 - `llama-cpp-perfkit report summary`: summarize benchmark runs
 - `llama-cpp-perfkit dev tui`: render a static fake TUI
 
-Use `--mode`, `--max-runs`, `--retry-failed`, and `--dry-run` flags as needed.
+Use `--retry-failed` and `--dry-run` flags as needed.
 
 ## Testing
 

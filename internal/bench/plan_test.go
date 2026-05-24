@@ -9,7 +9,7 @@ import (
 )
 
 func TestServerGroupKeyIgnoresPromptProfile(t *testing.T) {
-	a := domain.BenchmarkJob{PromptProfile: domain.PromptProfile{Name: "code"}, ServerConfig: domain.ServerConfig{ContextSize: 2048, KVType: "q8_0", NCPUMOE: domain.Ptr(4), BatchSize: domain.Ptr(128), UBatchSize: domain.Ptr(32)}}
+	a := domain.BenchmarkJob{PromptProfile: domain.PromptProfile{Name: "code"}, ServerConfig: domain.ServerConfig{ContextSize: 2048, KVType: "q8_0", NCPUMOE: new(4), BatchSize: new(128), UBatchSize: new(32)}}
 	b := a
 	b.PromptProfile = domain.PromptProfile{Name: "qa"}
 	if ServerGroupKey(a) != ServerGroupKey(b) {
@@ -17,7 +17,7 @@ func TestServerGroupKeyIgnoresPromptProfile(t *testing.T) {
 	}
 }
 
-func TestMakePlanSmoke(t *testing.T) {
+func TestMakePlanSelectsAllCandidates(t *testing.T) {
 	cfg := config.Defaults()
 	cfg.Models.HF = "model:A"
 	cfg.Matrix.KVType = []string{"q8_0"}
@@ -26,8 +26,8 @@ func TestMakePlanSmoke(t *testing.T) {
 		Flags: llamacpp.FeatureFlags{LlamaServer: llamacpp.ServerFlags{NCPUMOE: "--n-cpu-moe", SpecDraftNMax: "--spec-draft-n-max", SpecDraftPMin: "--spec-draft-p-min"}},
 		KV:    llamacpp.ValuesFeature{UsableValues: []string{"q8_0"}},
 	}
-	plan := MakePlan(cfg, features, nil, PlanOptions{Mode: "smoke"})
-	if plan.CandidateCount == 0 || plan.EstimatedRuns != 1 {
+	plan := MakePlan(cfg, features, nil, PlanOptions{})
+	if plan.CandidateCount == 0 || plan.SelectedCount != plan.CandidateCount {
 		t.Fatalf("bad plan: %+v", plan)
 	}
 }

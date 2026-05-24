@@ -159,13 +159,10 @@ type PlannedRun struct {
 
 // BenchmarkPlan holds the complete benchmark plan with all planned runs.
 type BenchmarkPlan struct {
-	Mode                 string                 `json:"mode"`
-	MaxRuns              int                    `json:"max_runs"`
 	ReuseExistingResults bool                   `json:"reuse_existing_results"`
 	CandidateCount       int                    `json:"candidate_count"`
 	SelectedCount        int                    `json:"selected_count"`
 	EstimatedRuns        int                    `json:"estimated_runs"`
-	MaxRunsCapped        bool                   `json:"max_runs_capped"`
 	Skipped              []SkipReason           `json:"skipped,omitempty"`
 	Notes                []string               `json:"notes,omitempty"`
 	Planned              []PlannedRun           `json:"planned,omitempty"`
@@ -273,11 +270,6 @@ type LlamaSummary struct {
 	TokensPrompt    *float64
 	TotalTimeSec    *float64
 	TTFTSeconds     *float64
-}
-
-// Ptr returns a pointer to the given value.
-func Ptr[T any](v T) *T {
-	return &v
 }
 
 // DerefString safely dereferences a string pointer, returning an empty string for nil.

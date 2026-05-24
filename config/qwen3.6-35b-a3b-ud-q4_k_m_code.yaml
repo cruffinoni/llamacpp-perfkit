@@ -49,8 +49,6 @@ run:
   cache_prompt: false
 
 budget:
-  mode: "full"
-  max_runs: 0
   reuse_existing_results: true
   stop_if_all_remaining_are_risky: true
 

@@ -68,10 +68,8 @@ type RunConfig struct {
 
 // BudgetConfig configures the benchmark budget.
 type BudgetConfig struct {
-	Mode                       string `yaml:"mode"`
-	MaxRuns                    int    `yaml:"max_runs"`
-	ReuseExistingResults       bool   `yaml:"reuse_existing_results"`
-	StopIfAllRemainingAreRisky bool   `yaml:"stop_if_all_remaining_are_risky"`
+	ReuseExistingResults       bool `yaml:"reuse_existing_results"`
+	StopIfAllRemainingAreRisky bool `yaml:"stop_if_all_remaining_are_risky"`
 }
 
 // MatrixConfig defines the parameter matrix dimensions for benchmarking.
@@ -122,20 +120,6 @@ func (p *ProfileRef) UnmarshalYAML(value *yaml.Node) error {
 		p.Name = strings.TrimSuffix(filepath.Base(p.File), filepath.Ext(p.File))
 	}
 	return nil
-}
-
-// modeDefault returns the default max runs for the given budget mode.
-func modeDefault(mode string) int {
-	switch mode {
-	case "smoke":
-		return 2
-	case "focused":
-		return 16
-	case "full":
-		return 0
-	default:
-		return 8
-	}
 }
 
 // abs returns the absolute path for the given path.
@@ -219,13 +203,11 @@ func Defaults() Config {
 			TimeoutSeconds:         900,
 		},
 		Budget: BudgetConfig{
-			Mode:                       "quick",
-			MaxRuns:                    8,
 			ReuseExistingResults:       true,
 			StopIfAllRemainingAreRisky: true,
 		},
 		Matrix: MatrixConfig{
-			NCPUMOE:     []*int{domain.Ptr(0)},
+			NCPUMOE:     []*int{new(0)},
 			ContextSize: []int{4096},
 			BatchSize:   []int{1024},
 			UBatchSize:  []int{1024},
@@ -269,14 +251,8 @@ func (c *Config) ApplyDefaults() {
 	if c.Run.TimeoutSeconds == 0 {
 		c.Run.TimeoutSeconds = 900
 	}
-	if c.Budget.Mode == "" {
-		c.Budget.Mode = "quick"
-	}
-	if c.Budget.MaxRuns == 0 && c.Budget.Mode != "full" {
-		c.Budget.MaxRuns = modeDefault(c.Budget.Mode)
-	}
 	if c.Matrix.NCPUMOE == nil {
-		c.Matrix.NCPUMOE = []*int{domain.Ptr(0)}
+		c.Matrix.NCPUMOE = []*int{new(0)}
 	}
 	if len(c.Matrix.ContextSize) == 0 {
 		c.Matrix.ContextSize = []int{4096}

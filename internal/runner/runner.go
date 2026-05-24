@@ -12,6 +12,7 @@ import (
 	"github.com/cruffinoni/llamacpp-perfkit/internal/llamacpp"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/storage"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/app"
+	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/components"
 	tuifmt "github.com/cruffinoni/llamacpp-perfkit/internal/tui/format"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/viewmodel"
 )
@@ -29,13 +30,6 @@ func sanitizedRequest(payload map[string]any) map[string]any {
 
 func nowISO() string {
 	return time.Now().UTC().Format(time.RFC3339Nano)
-}
-
-func maxRunsLabel(maxRuns int) string {
-	if maxRuns <= 0 {
-		return "unlimited"
-	}
-	return fmt.Sprintf("%d", maxRuns)
 }
 
 func or(value, fallback string) string {
@@ -74,8 +68,6 @@ func ContextLabel(tokens int) string {
 
 // Options holds benchmark execution settings.
 type Options struct {
-	Mode        string
-	MaxRuns     *int
 	RetryFailed bool
 	Force       bool
 	DryRun      bool
@@ -123,8 +115,6 @@ func (r *Runner) Plan() (domain.BenchmarkPlan, error) {
 		return domain.BenchmarkPlan{}, err
 	}
 	plan := bench.MakePlan(r.Config, r.Features, rows, bench.PlanOptions{
-		Mode:        r.Options.Mode,
-		MaxRuns:     r.Options.MaxRuns,
 		RetryFailed: r.Options.RetryFailed,
 		Force:       r.Options.Force,
 	})
@@ -136,8 +126,6 @@ func (r *Runner) Plan() (domain.BenchmarkPlan, error) {
 
 // PrintPlan prints the benchmark plan to stdout.
 func (r *Runner) PrintPlan(plan domain.BenchmarkPlan) {
-	fmt.Printf("Budget mode: %s\n", plan.Mode)
-	fmt.Printf("Max new requests: %s\n", maxRunsLabel(plan.MaxRuns))
 	fmt.Printf("Reuse existing results: %v\n", plan.ReuseExistingResults)
 	fmt.Printf("Candidate combinations: %d\n", plan.CandidateCount)
 	fmt.Printf("Selected plan entries: %d\n", plan.SelectedCount)
@@ -277,5 +265,5 @@ func (r *Runner) Run(ctx context.Context) error {
 	}
 	return app.Run(ctx, initial, func(runCtx context.Context, updates chan<- viewmodel.StateUpdate) error {
 		return r.runBenchmark(runCtx, updates, plan, time.Now())
-	})
+	}, components.ProgressBarStyleDot)
 }

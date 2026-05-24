@@ -8,7 +8,6 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
-	"sort"
 	"strconv"
 
 	"github.com/cruffinoni/llamacpp-perfkit/internal/config"
@@ -18,72 +17,8 @@ import (
 
 // PlanOptions controls benchmark plan generation behavior.
 type PlanOptions struct {
-	Mode        string
-	MaxRuns     *int
 	RetryFailed bool
 	Force       bool
-}
-
-// contains reports whether target is present in values.
-func contains(values []string, target string) bool {
-	for _, value := range values {
-		if value == target {
-			return true
-		}
-	}
-	return false
-}
-
-// firstInt returns the first element of values, or fallback if values is empty.
-func firstInt(values []int, fallback int) int {
-	if len(values) == 0 {
-		return fallback
-	}
-	return values[0]
-}
-
-// minInt returns the minimum value in the slice, or 0 if empty.
-func minInt(values []int) int {
-	if len(values) == 0 {
-		return 0
-	}
-	out := values[0]
-	for _, value := range values[1:] {
-		if value < out {
-			out = value
-		}
-	}
-	return out
-}
-
-// maxInt returns the larger of two integers.
-func maxInt(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
-}
-
-// minIntValue returns the smaller of two integers.
-func minIntValue(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
-}
-
-// minPositive returns the smallest positive value from the arguments, or 0 if none are positive.
-func minPositive(values ...int) int {
-	out := 0
-	for _, value := range values {
-		if value <= 0 {
-			continue
-		}
-		if out == 0 || value < out {
-			out = value
-		}
-	}
-	return out
 }
 
 // leftPadInt left-pads an integer with zeros to the given width.
@@ -95,34 +30,12 @@ func leftPadInt(value, width int) string {
 	return text
 }
 
-// modeDefault returns the default MaxRuns for the given budget mode.
-func modeDefault(mode string) int {
-	switch mode {
-	case "smoke":
-		return 2
-	case "focused":
-		return 16
-	case "full":
-		return 0
-	default:
-		return 8
-	}
-}
-
 // stringPtrValue returns the string value of a pointer, or "" if nil.
 func stringPtrValue(value *string) string {
 	if value == nil {
 		return ""
 	}
 	return *value
-}
-
-// intPtrEqual reports whether two int pointers are equal (both nil or same value).
-func intPtrEqual(a, b *int) bool {
-	if a == nil || b == nil {
-		return a == b
-	}
-	return *a == *b
 }
 
 // usableKV returns the list of KV cache types that are both configured and supported.
@@ -144,30 +57,6 @@ func usableKV(cfg config.Config, features llamacpp.Features) []string {
 		}
 	}
 	return out
-}
-
-// safestNCPU returns the largest n_cpu_moe from candidates or the config matrix, preferring non-nil values.
-func safestNCPU(cfg config.Config, candidates []domain.BenchmarkJob) *int {
-	var best *int
-	for _, job := range candidates {
-		if job.ServerConfig.NCPUMOE == nil {
-			continue
-		}
-		if best == nil || *job.ServerConfig.NCPUMOE > *best {
-			value := *job.ServerConfig.NCPUMOE
-			best = &value
-		}
-	}
-	if best != nil {
-		return best
-	}
-	for _, value := range cfg.Matrix.NCPUMOE {
-		if value != nil && (best == nil || *value > *best) {
-			copyValue := *value
-			best = &copyValue
-		}
-	}
-	return best
 }
 
 // fileIdentity returns file metadata used for identity hashing.
@@ -288,53 +177,6 @@ func latestRowsByHash(rows []domain.LoadedRun) map[string]domain.LoadedRun {
 	return out
 }
 
-// firstKV returns the first usable KV cache type from configuration and feature detection.
-func firstKV(cfg config.Config, features llamacpp.Features) string {
-	values := usableKV(cfg, features)
-	if len(values) > 0 {
-		return values[0]
-	}
-	if len(cfg.Matrix.KVType) > 0 {
-		return cfg.Matrix.KVType[0]
-	}
-	return ""
-}
-
-// nearIntPtr reports whether value is within the given radius of target in the sorted universe of int pointers.
-func nearIntPtr(value, target *int, universe []*int, radius int) bool {
-	if target == nil {
-		return value == nil
-	}
-	if value == nil {
-		return false
-	}
-	var values []int
-	for _, item := range universe {
-		if item != nil {
-			values = append(values, *item)
-		}
-	}
-	sort.Ints(values)
-	idx := -1
-	for i, item := range values {
-		if item == *target {
-			idx = i
-			break
-		}
-	}
-	if idx < 0 {
-		return *value == *target
-	}
-	lo := maxInt(0, idx-radius)
-	hi := minIntValue(len(values)-1, idx+radius)
-	for _, item := range values[lo : hi+1] {
-		if item == *value {
-			return true
-		}
-	}
-	return false
-}
-
 // planRunID generates a formatted plan run identifier with zero-padded index.
 func planRunID(index int) string {
 	return "plan-" + leftPadInt(index, 4)
@@ -411,99 +253,6 @@ func RunnableGroups(plan domain.BenchmarkPlan) [][]domain.PlannedRun {
 	out := make([][]domain.PlannedRun, 0, len(order))
 	for _, key := range order {
 		out = append(out, byKey[key])
-	}
-	return out
-}
-
-// selectSmoke selects a single job for smoke testing: the smallest context, first KV type, and highest n_cpu_moe.
-func selectSmoke(cfg config.Config, features llamacpp.Features, candidates []domain.BenchmarkJob) []domain.BenchmarkJob {
-	ctx := minInt(cfg.Matrix.ContextSize)
-	kv := firstKV(cfg, features)
-	var bestN *int
-	for _, job := range candidates {
-		if job.ServerConfig.ContextSize != ctx || job.ServerConfig.KVType != kv || job.ServerConfig.NCPUMOE == nil {
-			continue
-		}
-		if bestN == nil || *job.ServerConfig.NCPUMOE > *bestN {
-			value := *job.ServerConfig.NCPUMOE
-			bestN = &value
-		}
-	}
-	var out []domain.BenchmarkJob
-	for _, job := range candidates {
-		if job.ServerConfig.ContextSize == ctx && job.ServerConfig.KVType == kv && intPtrEqual(job.ServerConfig.NCPUMOE, bestN) {
-			out = append(out, job)
-		}
-	}
-	if len(out) > 1 {
-		out = out[:1]
-	}
-	return uniqueJobs(out)
-}
-
-// selectQuick selects jobs for quick benchmarking using the first context size, first KV type, and safest n_cpu_moe.
-func selectQuick(
-	cfg config.Config,
-	features llamacpp.Features,
-	candidates []domain.BenchmarkJob,
-	maxRuns int,
-) []domain.BenchmarkJob {
-	ctx := firstInt(cfg.Matrix.ContextSize, 4096)
-	kv := firstKV(cfg, features)
-	nCPU := safestNCPU(cfg, candidates)
-	var out []domain.BenchmarkJob
-	for _, job := range candidates {
-		if job.ServerConfig.ContextSize == ctx && job.ServerConfig.KVType == kv && intPtrEqual(job.ServerConfig.NCPUMOE, nCPU) {
-			out = append(out, job)
-		}
-	}
-	out = uniqueJobs(out)
-	if maxRuns > 0 && len(out) > maxRuns {
-		return out[:maxRuns]
-	}
-	return out
-}
-
-// selectFocused selects jobs focused around the best-performing configuration from previous runs.
-func selectFocused(
-	cfg config.Config,
-	features llamacpp.Features,
-	candidates []domain.BenchmarkJob,
-	rows []domain.LoadedRun,
-	maxRuns int,
-) []domain.BenchmarkJob {
-	if len(rows) == 0 {
-		return selectQuick(cfg, features, candidates, minPositive(maxRuns, 8))
-	}
-	best := rows[0]
-	bestSpeed := -1.0
-	for _, row := range rows {
-		if row.Summary.Status.Kind() != domain.StatusSuccess || row.LlamaSummary.GenerationTokS == nil {
-			continue
-		}
-		if *row.LlamaSummary.GenerationTokS > bestSpeed {
-			best = row
-			bestSpeed = *row.LlamaSummary.GenerationTokS
-		}
-	}
-	if bestSpeed < 0 {
-		return selectQuick(cfg, features, candidates, minPositive(maxRuns, 8))
-	}
-	nCPU := best.Summary.ServerConfig.NCPUMOE
-	ctx := best.Summary.ServerConfig.ContextSize
-	kvValues := usableKV(cfg, features)
-	if len(kvValues) > 2 {
-		kvValues = kvValues[:2]
-	}
-	var out []domain.BenchmarkJob
-	for _, job := range candidates {
-		if job.ServerConfig.ContextSize == ctx && contains(kvValues, job.ServerConfig.KVType) && nearIntPtr(job.ServerConfig.NCPUMOE, nCPU, cfg.Matrix.NCPUMOE, 2) {
-			out = append(out, job)
-		}
-	}
-	out = uniqueJobs(out)
-	if maxRuns > 0 && len(out) > maxRuns {
-		return out[:maxRuns]
 	}
 	return out
 }
@@ -589,54 +338,18 @@ func candidateJobs(cfg config.Config, features llamacpp.Features) ([]domain.Benc
 	return jobs, append(skipped, featureSkips(features)...)
 }
 
-// selectJobs dispatches to the appropriate job selection strategy based on the budget mode.
-func selectJobs(
-	cfg config.Config,
-	features llamacpp.Features,
-	candidates []domain.BenchmarkJob,
-	rows []domain.LoadedRun,
-	mode string,
-	maxRuns int,
-) []domain.BenchmarkJob {
-	switch mode {
-	case "smoke":
-		return selectSmoke(cfg, features, candidates)
-	case "focused":
-		return selectFocused(cfg, features, candidates, rows, maxRuns)
-	case "full":
-		return uniqueJobs(candidates)
-	default:
-		return selectQuick(cfg, features, candidates, maxRuns)
-	}
-}
-
-// MakePlan expands the config matrix, selects jobs by budget mode, and determines actions for each job.
+// MakePlan expands the config matrix, deduplicates jobs, and determines actions for each job.
 func MakePlan(
 	cfg config.Config,
 	features llamacpp.Features,
 	rows []domain.LoadedRun,
 	opts PlanOptions,
 ) domain.BenchmarkPlan {
-	mode := opts.Mode
-	if mode == "" {
-		mode = cfg.Budget.Mode
-	}
-	maxRuns := cfg.Budget.MaxRuns
-	if opts.MaxRuns != nil {
-		maxRuns = *opts.MaxRuns
-	} else if maxRuns == 0 && mode != "full" {
-		maxRuns = modeDefault(mode)
-	}
-
 	candidates, skipped := candidateJobs(cfg, features)
 	for i := range candidates {
 		candidates[i].ConfigHash = ConfigHash(cfg, features, candidates[i])
 	}
-	selected := selectJobs(cfg, features, candidates, rows, mode, maxRuns)
-	uncapped := len(selected)
-	if maxRuns > 0 && len(selected) > maxRuns {
-		selected = selected[:maxRuns]
-	}
+	selected := uniqueJobs(candidates)
 
 	byHash := latestRowsByHash(rows)
 	planned := make([]domain.PlannedRun, 0, len(selected))
@@ -657,13 +370,10 @@ func MakePlan(
 	}
 	assignServerIndexes(planned)
 	return domain.BenchmarkPlan{
-		Mode:                 mode,
-		MaxRuns:              maxRuns,
 		ReuseExistingResults: cfg.Budget.ReuseExistingResults,
 		CandidateCount:       len(candidates),
 		SelectedCount:        len(selected),
 		EstimatedRuns:        estimated,
-		MaxRunsCapped:        maxRuns > 0 && uncapped > len(selected),
 		Skipped:              skipped,
 		Planned:              planned,
 	}
