@@ -30,27 +30,52 @@ type serverProcess struct {
 	shutdownTimeout int
 }
 
-func (r *Runner) prepareServer(group []domain.PlannedRun, groupIndex int) (serverExecution, error) {
-	job := group[0].Job
-	host := r.Config.Llama.Server.Host
-	port, err := llamacpp.FreeTCPPort(host)
-	if err != nil {
-		return serverExecution{}, fmt.Errorf("find free TCP port on %s: %w", host, err)
+func terminateProcess(cmd *exec.Cmd, shutdownTimeout int) {
+	if cmd == nil || cmd.Process == nil {
+		return
 	}
-	serverRunID := fmt.Sprintf("%d-server-%04d", time.Now().Unix(), groupIndex)
-	rawPath := filepath.Join(r.RawDir, serverRunID+".log")
-	monitorPath := filepath.Join(r.MonitoringDir, serverRunID+".jsonl")
-	cmdArgs := llamacpp.BuildServerCommand(r.Config, r.Features, job, port, rawPath)
-	return serverExecution{
-		ID:          serverRunID,
-		RawPath:     rawPath,
-		MonitorPath: monitorPath,
-		CmdArgs:     cmdArgs,
-		BaseURL:     fmt.Sprintf("http://%s:%d", host, port),
-	}, nil
+	done := make(chan struct{})
+	go func() {
+		_ = cmd.Wait()
+		close(done)
+	}()
+	if runtime.GOOS != "windows" {
+		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
+	} else {
+		_ = cmd.Process.Signal(os.Interrupt)
+	}
+	select {
+	case <-done:
+	case <-time.After(time.Duration(shutdownTimeout) * time.Second):
+		if runtime.GOOS != "windows" {
+			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
+		} else {
+			_ = cmd.Process.Kill()
+		}
+		<-done
+	}
 }
 
-func startServer(ctx context.Context, cfg config.Config, client llamacpp.Client, server serverExecution) (*serverProcess, error) {
+// Terminate stops the server process and cleans up resources.
+func (p *serverProcess) Terminate() {
+	if p == nil {
+		return
+	}
+	if p.cancel != nil {
+		p.cancel()
+	}
+	terminateProcess(p.cmd, p.shutdownTimeout)
+	if p.logFile != nil {
+		_ = p.logFile.Close()
+	}
+}
+
+func startServer(
+	ctx context.Context,
+	cfg config.Config,
+	client llamacpp.Client,
+	server serverExecution,
+) (*serverProcess, error) {
 	logFile, err := os.OpenFile(server.RawPath, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
 	if err != nil {
 		return nil, fmt.Errorf("open server log %s: %w", server.RawPath, err)
@@ -81,41 +106,22 @@ func startServer(ctx context.Context, cfg config.Config, client llamacpp.Client,
 	return process, nil
 }
 
-func (p *serverProcess) Terminate() {
-	if p == nil {
-		return
+func (r *Runner) prepareServer(group []domain.PlannedRun, groupIndex int) (serverExecution, error) {
+	job := group[0].Job
+	host := r.Config.Llama.Server.Host
+	port, err := llamacpp.FreeTCPPort(host)
+	if err != nil {
+		return serverExecution{}, fmt.Errorf("find free TCP port on %s: %w", host, err)
 	}
-	if p.cancel != nil {
-		p.cancel()
-	}
-	terminateProcess(p.cmd, p.shutdownTimeout)
-	if p.logFile != nil {
-		_ = p.logFile.Close()
-	}
-}
-
-func terminateProcess(cmd *exec.Cmd, shutdownTimeout int) {
-	if cmd == nil || cmd.Process == nil {
-		return
-	}
-	done := make(chan struct{})
-	go func() {
-		_ = cmd.Wait()
-		close(done)
-	}()
-	if runtime.GOOS != "windows" {
-		_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGTERM)
-	} else {
-		_ = cmd.Process.Signal(os.Interrupt)
-	}
-	select {
-	case <-done:
-	case <-time.After(time.Duration(shutdownTimeout) * time.Second):
-		if runtime.GOOS != "windows" {
-			_ = syscall.Kill(-cmd.Process.Pid, syscall.SIGKILL)
-		} else {
-			_ = cmd.Process.Kill()
-		}
-		<-done
-	}
+	serverRunID := fmt.Sprintf("%d-server-%04d", time.Now().Unix(), groupIndex)
+	rawPath := filepath.Join(r.RawDir, serverRunID+".log")
+	monitorPath := filepath.Join(r.MonitoringDir, serverRunID+".jsonl")
+	cmdArgs := llamacpp.BuildServerCommand(r.Config, r.Features, job, port, rawPath)
+	return serverExecution{
+		ID:          serverRunID,
+		RawPath:     rawPath,
+		MonitorPath: monitorPath,
+		CmdArgs:     cmdArgs,
+		BaseURL:     fmt.Sprintf("http://%s:%d", host, port),
+	}, nil
 }

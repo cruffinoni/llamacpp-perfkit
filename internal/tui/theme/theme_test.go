@@ -1,289 +1,116 @@
 package theme
 
 import (
+	"sort"
 	"testing"
 
-	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/theme"
+	"github.com/charmbracelet/lipgloss"
 )
 
-func TestStatusAndPhaseStyles(t *testing.T) {
-	s := NewStyles()
-	cases := map[string]theme.SolarizedDark{
-		"success":    SolarizedDark.Green,
-		"running":    SolarizedDark.Cyan,
-		"pending":    SolarizedDark.Muted,
-		"timeout":    SolarizedDark.Yellow,
-		"oom":        SolarizedDark.Red,
-		"failed":     SolarizedDark.Red,
-		"unknown":    SolarizedDark.Muted,
-	}
-	for status, want := range cases {
-		if got := StatusStyle(s, status).GetForeground(); got != want {
-			t.Errorf("StatusStyle(%q) = %v, want %v", status, got, want)
-		}
-	}
-	for phase, want := range cases {
-		if got := PhaseStyle(s, phase).GetForeground(); got != want {
-			t.Errorf("PhaseStyle(%q) = %v, want %v", phase, got, want)
-		}
-	}
-}
-
 func TestStatusStyleMappings(t *testing.T) {
-	cases := map[string]theme.SolarizedDark{
-		"success": theme.SolarizedDark.Green,
-		"running": theme.SolarizedDark.Cyan,
-		"pending": theme.SolarizedDark.Muted,
-		"timeout": theme.SolarizedDark.Yellow,
-		"oom":     theme.SolarizedDark.Red,
-		"failed":  theme.SolarizedDark.Red,
-		"unknown": theme.SolarizedDark.Muted,
+	s := NewStyles(SolarizedDark)
+	cases := []struct {
+		status string
+		want   lipgloss.Color
+	}{
+		{"success", lipgloss.Color(SolarizedDark.Success)},
+		{"running", lipgloss.Color(SolarizedDark.Running)},
+		{"pending", lipgloss.Color(SolarizedDark.Muted)},
+		{"timeout", lipgloss.Color(SolarizedDark.Warning)},
+		{"oom", lipgloss.Color(SolarizedDark.Error)},
+		{"failed", lipgloss.Color(SolarizedDark.Error)},
+		{"unknown", lipgloss.Color(SolarizedDark.Muted)},
 	}
-	for status, want := range cases {
-		s := NewStyles()
-		if got := StatusStyle(s, status).GetForeground(); got != want {
-			t.Errorf("StatusStyle(%q) = %v, want %v", status, got, want)
+	// Sort by status for deterministic ordering.
+	sort.Slice(cases, func(i, j int) bool { return cases[i].status < cases[j].status })
+	for _, tc := range cases {
+		if got := StatusStyle(s, tc.status).GetForeground(); got != tc.want {
+			t.Errorf("StatusStyle(%q) = %v, want %v", tc.status, got, tc.want)
 		}
 	}
 }
 
 func TestPhaseStyleMappings(t *testing.T) {
-	cases := map[string]theme.SolarizedDark{
-		"prefill":    theme.SolarizedDark.Cyan,
-		"generating": theme.SolarizedDark.Cyan,
-		"starting":   theme.SolarizedDark.Cyan,
-		"done":       theme.SolarizedDark.Muted,
-		"pending":    theme.SolarizedDark.Muted,
-		"-":          theme.SolarizedDark.Muted,
-		"timeout":    theme.SolarizedDark.Yellow,
-		"oom":        theme.SolarizedDark.Red,
-		"failed":     theme.SolarizedDark.Red,
-		"unknown":    theme.SolarizedDark.Muted,
+	s := NewStyles(SolarizedDark)
+	cases := []struct {
+		phase string
+		want  lipgloss.Color
+	}{
+		{"prefill", lipgloss.Color(SolarizedDark.Info)},
+		{"generating", lipgloss.Color(SolarizedDark.Info)},
+		{"starting", lipgloss.Color(SolarizedDark.Info)},
+		{"done", lipgloss.Color(SolarizedDark.Muted)},
+		{"pending", lipgloss.Color(SolarizedDark.Muted)},
+		{"-", lipgloss.Color(SolarizedDark.Muted)},
+		{"timeout", lipgloss.Color(SolarizedDark.Warning)},
+		{"oom", lipgloss.Color(SolarizedDark.Error)},
+		{"failed", lipgloss.Color(SolarizedDark.Error)},
+		{"unknown", lipgloss.Color(SolarizedDark.Muted)},
 	}
-	for phase, want := range cases {
-		s := NewStyles()
-		if got := PhaseStyle(s, phase).GetForeground(); got != want {
-			t.Errorf("PhaseStyle(%q) = %v, want %v", phase, got, want)
-		}
-	}
-}
-
-func TestProgressColors(t *testing.T) {
-	s := NewStyles()
-	if s.progressBarFilled.GetForeground() != theme.SolarizedDark.Green {
-		t.Error("ProgressBarFilled should use green")
-	}
-	if s.progressBarEmpty.GetForeground() != theme.SolarizedDark.Muted {
-		t.Error("ProgressBarEmpty should use muted")
-	}
-}
-
-func TestPaletteConstants(t *testing.T) {
-	expected := map[theme.Token]theme.SolarizedDark{
-		theme.TokenBg:      theme.SolarizedDark.BG,
-		theme.TokenPanel:   theme.SolarizedDark.Panel,
-		theme.TokenBorder:  theme.SolarizedDark.Border,
-		theme.TokenText:    theme.SolarizedDark.Text,
-		theme.TokenMuted:   theme.SolarizedDark.Muted,
-		theme.TokenTitle:   theme.SolarizedDark.Title,
-		theme.TokenAccent:  theme.SolarizedDark.Accent,
-		theme.TokenCyan:    theme.SolarizedDark.Cyan,
-		theme.TokenGreen:   theme.SolarizedDark.Green,
-		theme.TokenYellow:  theme.SolarizedDark.Yellow,
-		theme.TokenOrange:  theme.SolarizedDark.Orange,
-		theme.TokenRed:     theme.SolarizedDark.Red,
-		theme.TokenMagenta: theme.SolarizedDark.Magenta,
-		theme.TokenBlue:    theme.SolarizedDark.Blue,
-	}
-	for token, want := range expected {
-		if got := token; got != theme.Token(0) && (got == theme.TokenBg || got == theme.TokenPanel) {
-			t.Errorf("Token %d has unknown color mapping", got)
+	// Sort by phase for deterministic ordering.
+	sort.Slice(cases, func(i, j int) bool { return cases[i].phase < cases[j].phase })
+	for _, tc := range cases {
+		if got := PhaseStyle(s, tc.phase).GetForeground(); got != tc.want {
+			t.Errorf("PhaseStyle(%q) = %v, want %v", tc.phase, got, tc.want)
 		}
 	}
 }
 
 func TestStyleDefaults(t *testing.T) {
-	s := NewStyles()
-	if s.Base.GetBackground() != theme.SolarizedDark.BG {
-		t.Error("Base should have default background")
+	s := NewStyles(SolarizedDark)
+	if s.Base.GetBackground() != lipgloss.Color(SolarizedDark.Background) {
+		t.Error("Base should have theme background")
 	}
-	if s.Panel.GetBorder() == nil {
-		t.Error("Panel should have rounded border")
+	if s.Base.GetForeground() != lipgloss.Color(SolarizedDark.Text) {
+		t.Error("Base should have theme text color")
 	}
-	if !s.Title.Bold() {
+	_, top, _, _, _ := s.Panel.GetBorder()
+	if !top {
+		t.Error("Panel should have a border set")
+	}
+	if !s.Title.GetBold() {
 		t.Error("Title should be bold")
 	}
-	if !s.TextBold.Bold() {
-		t.Error("TextBold should be bold")
-	}
-}
-	if StatusStyle(styles, "oom").GetForeground() != SolarizedDark.Red {
-		t.Fatal("oom should use red")
-	}
-	if PhaseStyle(styles, "generating").GetForeground() != SolarizedDark.Cyan {
-		t.Fatal("generating should use cyan")
-	}
-	if PhaseStyle(styles, "pending").GetForeground() != SolarizedDark.Muted {
-		t.Fatal("pending should use muted")
-	}
-}
-
-func TestStatusStyleMappings(t *testing.T) {
-	cases := map[string]theme.SolarizedDark{
-		"success": theme.SolarizedDark.Green,
-		"running": theme.SolarizedDark.Cyan,
-		"pending": theme.SolarizedDark.Muted,
-		"timeout": theme.SolarizedDark.Yellow,
-		"oom":     theme.SolarizedDark.Red,
-		"failed":  theme.SolarizedDark.Red,
-		"unknown": theme.SolarizedDark.Muted,
-	}
-	for status, want := range cases {
-		s := NewStyles()
-		if got := StatusStyle(s, status).GetForeground(); got != want {
-			t.Errorf("StatusStyle(%q) = %v, want %v", status, got, want)
-		}
-	}
-}
-
-func TestPhaseStyleMappings(t *testing.T) {
-	cases := map[string]theme.SolarizedDark{
-		"prefill":    theme.SolarizedDark.Cyan,
-		"generating": theme.SolarizedDark.Cyan,
-		"starting":   theme.SolarizedDark.Cyan,
-		"done":       theme.SolarizedDark.Muted,
-		"pending":    theme.SolarizedDark.Muted,
-		"-":          theme.SolarizedDark.Muted,
-		"timeout":    theme.SolarizedDark.Yellow,
-		"oom":        theme.SolarizedDark.Red,
-		"failed":     theme.SolarizedDark.Red,
-		"unknown":    theme.SolarizedDark.Muted,
-	}
-	for phase, want := range cases {
-		s := NewStyles()
-		if got := PhaseStyle(s, phase).GetForeground(); got != want {
-			t.Errorf("PhaseStyle(%q) = %v, want %v", phase, got, want)
-		}
-	}
-}
-
-func TestProgressColors(t *testing.T) {
-	s := NewStyles()
-	if s.progressBarFilled.GetForeground() != theme.SolarizedDark.Green {
-		t.Error("ProgressBarFilled should use green")
-	}
-	if s.progressBarEmpty.GetForeground() != theme.SolarizedDark.Muted {
-		t.Error("ProgressBarEmpty should use muted")
-	}
-}
-
-func TestPaletteConstants(t *testing.T) {
-	expected := map[theme.Token]theme.SolarizedDark{
-		theme.TokenBg:      theme.SolarizedDark.BG,
-		theme.TokenPanel:   theme.SolarizedDark.Panel,
-		theme.TokenBorder:  theme.SolarizedDark.Border,
-		theme.TokenText:    theme.SolarizedDark.Text,
-		theme.TokenMuted:   theme.SolarizedDark.Muted,
-		theme.TokenTitle:   theme.SolarizedDark.Title,
-		theme.TokenAccent:  theme.SolarizedDark.Accent,
-		theme.TokenCyan:    theme.SolarizedDark.Cyan,
-		theme.TokenGreen:   theme.SolarizedDark.Green,
-		theme.TokenYellow:  theme.SolarizedDark.Yellow,
-		theme.TokenOrange:  theme.SolarizedDark.Orange,
-		theme.TokenRed:     theme.SolarizedDark.Red,
-		theme.TokenMagenta: theme.SolarizedDark.Magenta,
-		theme.TokenBlue:    theme.SolarizedDark.Blue,
-	}
-	for token, want := range expected {
-		if got := token; got != theme.Token(0) && (got == theme.TokenBg || got == theme.TokenPanel) {
-			t.Errorf("Token %d has unknown color mapping", got)
-		}
-	}
-}
-
-func TestStyleDefaults(t *testing.T) {
-	s := NewStyles()
-	if s.Base.GetBackground() != theme.SolarizedDark.BG {
-		t.Error("Base should have default background")
-	}
-	if s.Panel.GetBorder() == nil {
-		t.Error("Panel should have rounded border")
-	}
-	if !s.Title.Bold() {
-		t.Error("Title should be bold")
-	}
-	if !s.TextBold.Bold() {
+	if !s.TextBold.GetBold() {
 		t.Error("TextBold should be bold")
 	}
 }
 
-func TestPhaseStyleMappings(t *testing.T) {
-	s := NewStyles()
-	cases := map[string]theme.SolarizedDark{
-		"prefill":    SolarizedDark.Cyan,
-		"generating": SolarizedDark.Cyan,
-		"starting":   SolarizedDark.Cyan,
-		"done":       SolarizedDark.Muted,
-		"pending":    SolarizedDark.Muted,
-		"-":          SolarizedDark.Muted,
-		"timeout":    SolarizedDark.Yellow,
-		"oom":        SolarizedDark.Red,
-		"failed":     SolarizedDark.Red,
-		"unknown":    SolarizedDark.Muted,
+func TestSolarizedDarkConstants(t *testing.T) {
+	if SolarizedDark.Background != "#002b36" {
+		t.Error("Background mismatch")
 	}
-	for phase, want := range cases {
-		if got := PhaseStyle(s, phase).GetForeground(); got != want {
-			t.Errorf("PhaseStyle(%q) = %v, want %v", phase, got, want)
-		}
+	if SolarizedDark.Success != "#bad600" {
+		t.Error("Success mismatch")
+	}
+	if SolarizedDark.Error != "#e02f30" {
+		t.Error("Error mismatch")
+	}
+	if SolarizedDark.Info != "#268bd2" {
+		t.Error("Info mismatch")
 	}
 }
 
-func TestProgressColors(t *testing.T) {
-	s := NewStyles()
-	if s.progressBarFilled.GetForeground() != theme.SolarizedDark.Green {
-		t.Error("ProgressBarFilled should use green")
+func TestNewStylesWithCustomTheme(t *testing.T) {
+	custom := Theme{
+		Background: "#000000",
+		Text:       "#ffffff",
+		Panel:      "#111111",
+		Border:     "#333333",
+		Title:      "#ffffff",
+		Muted:      "#666666",
+		Accent:     "#ff0000",
+		Success:    "#00ff00",
+		Running:    "#0000ff",
+		Warning:    "#ffff00",
+		Error:      "#ff0000",
+		Info:       "#00ffff",
 	}
-	if s.progressBarEmpty.GetForeground() != theme.SolarizedDark.Muted {
-		t.Error("ProgressBarEmpty should use muted")
+	s := NewStyles(custom)
+	if s.Base.GetBackground() != lipgloss.Color("#000000") {
+		t.Error("Custom theme background should be applied")
 	}
-}
-
-func TestPaletteConstants(t *testing.T) {
-	expected := map[theme.Token]theme.SolarizedDark{
-		theme.TokenBg:      theme.SolarizedDark.BG,
-		theme.TokenPanel:   theme.SolarizedDark.Panel,
-		theme.TokenBorder:  theme.SolarizedDark.Border,
-		theme.TokenText:    theme.SolarizedDark.Text,
-		theme.TokenMuted:   theme.SolarizedDark.Muted,
-		theme.TokenTitle:   theme.SolarizedDark.Title,
-		theme.TokenAccent:  theme.SolarizedDark.Accent,
-		theme.TokenCyan:    theme.SolarizedDark.Cyan,
-		theme.TokenGreen:   theme.SolarizedDark.Green,
-		theme.TokenYellow:  theme.SolarizedDark.Yellow,
-		theme.TokenOrange:  theme.SolarizedDark.Orange,
-		theme.TokenRed:     theme.SolarizedDark.Red,
-		theme.TokenMagenta: theme.SolarizedDark.Magenta,
-		theme.TokenBlue:    theme.SolarizedDark.Blue,
-	}
-	for token, want := range expected {
-		if got := token; got != theme.Token(0) && (got == theme.TokenBg || got == theme.TokenPanel) {
-			t.Errorf("Token %d has unknown color mapping", got)
-		}
-	}
-}
-
-func TestStyleDefaults(t *testing.T) {
-	s := NewStyles()
-	if s.Base.GetBackground() != theme.SolarizedDark.BG {
-		t.Error("Base should have default background")
-	}
-	if s.Panel.GetBorder() == nil {
-		t.Error("Panel should have rounded border")
-	}
-	if !s.Title.Bold() {
-		t.Error("Title should be bold")
-	}
-	if !s.TextBold.Bold() {
-		t.Error("TextBold should be bold")
+	if s.Success.GetForeground() != lipgloss.Color("#00ff00") {
+		t.Error("Custom theme success should be applied")
 	}
 }

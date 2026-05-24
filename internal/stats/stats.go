@@ -5,6 +5,7 @@ import (
 	"sort"
 )
 
+// MetricSummary holds statistical measures for a set of benchmark values.
 type MetricSummary struct {
 	Count         int      `json:"count"`
 	Mean          *float64 `json:"mean"`
@@ -14,45 +15,6 @@ type MetricSummary struct {
 	Min           *float64 `json:"min"`
 	Max           *float64 `json:"max"`
 	P10           *float64 `json:"p10"`
-}
-
-func Summarize(values []float64) MetricSummary {
-	clean := make([]float64, 0, len(values))
-	for _, value := range values {
-		if !math.IsNaN(value) && !math.IsInf(value, 0) {
-			clean = append(clean, value)
-		}
-	}
-	if len(clean) == 0 {
-		return MetricSummary{}
-	}
-
-	ordered := append([]float64(nil), clean...)
-	sort.Float64s(ordered)
-
-	mean := average(clean)
-	median := percentileSorted(ordered, 50)
-	p10 := percentileSorted(ordered, 10)
-	minVal := ordered[0]
-	maxVal := ordered[len(ordered)-1]
-	geo := geometricMean(clean)
-
-	out := MetricSummary{
-		Count:  len(clean),
-		Mean:   &mean,
-		Median: &median,
-		Min:    &minVal,
-		Max:    &maxVal,
-		P10:    &p10,
-	}
-	if len(clean) > 1 {
-		std := sampleStddev(clean, mean)
-		out.Stddev = &std
-	}
-	if geo != nil {
-		out.GeometricMean = geo
-	}
-	return out
 }
 
 func average(values []float64) float64 {
@@ -102,4 +64,44 @@ func percentileSorted(ordered []float64, pct float64) float64 {
 	}
 	fraction := rank - float64(lower)
 	return ordered[lower] + (ordered[upper]-ordered[lower])*fraction
+}
+
+// Summarize computes a statistical summary from raw metric values.
+func Summarize(values []float64) MetricSummary {
+	clean := make([]float64, 0, len(values))
+	for _, value := range values {
+		if !math.IsNaN(value) && !math.IsInf(value, 0) {
+			clean = append(clean, value)
+		}
+	}
+	if len(clean) == 0 {
+		return MetricSummary{}
+	}
+
+	ordered := append([]float64(nil), clean...)
+	sort.Float64s(ordered)
+
+	mean := average(clean)
+	median := percentileSorted(ordered, 50)
+	p10 := percentileSorted(ordered, 10)
+	minVal := ordered[0]
+	maxVal := ordered[len(ordered)-1]
+	geo := geometricMean(clean)
+
+	out := MetricSummary{
+		Count:  len(clean),
+		Mean:   &mean,
+		Median: &median,
+		Min:    &minVal,
+		Max:    &maxVal,
+		P10:    &p10,
+	}
+	if len(clean) > 1 {
+		std := sampleStddev(clean, mean)
+		out.Stddev = &std
+	}
+	if geo != nil {
+		out.GeometricMean = geo
+	}
+	return out
 }

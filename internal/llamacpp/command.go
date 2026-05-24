@@ -9,6 +9,96 @@ import (
 	"github.com/cruffinoni/llamacpp-perfkit/internal/domain"
 )
 
+func shellQuote(value string) string {
+	if value == "" {
+		return "''"
+	}
+	if strings.IndexFunc(value, func(r rune) bool {
+		return !(r == '-' || r == '_' || r == '/' || r == '.' || r == ':' || r == '=' || r == '+' || r == ',' || r == '%' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z')
+	}) == -1 {
+		return value
+	}
+	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
+}
+
+func appendExtraArgs(cmd []string, args []config.ExtraArg) []string {
+	for _, item := range args {
+		if item.Value == nil || item.Value == false {
+			continue
+		}
+		cmd = append(cmd, item.Flag)
+		if item.Value != true {
+			cmd = append(cmd, fmt.Sprint(item.Value))
+		}
+	}
+	return cmd
+}
+
+// EndpointPath returns the API path for the given endpoint kind.
+func EndpointPath(kind string) string {
+	if kind == "chat" {
+		return "/v1/chat/completions"
+	}
+	return "/completion"
+}
+
+// EndpointKind returns the normalized endpoint type from the configuration.
+func EndpointKind(cfg config.Config) string {
+	value := strings.ToLower(strings.TrimSpace(cfg.Run.Endpoint))
+	switch value {
+	case "", "chat", "chat-completions", "chat_completions", "/v1/chat/completions":
+		return "chat"
+	case "completion", "completions", "/completion":
+		return "completion"
+	default:
+		return value
+	}
+}
+
+// CommandToShell converts a command slice to a shell-quoted string.
+func CommandToShell(cmd []string) string {
+	parts := make([]string, len(cmd))
+	for i, part := range cmd {
+		parts[i] = shellQuote(part)
+	}
+	return strings.Join(parts, " ")
+}
+
+// BuildRequestPayload constructs the JSON request payload for a benchmark job.
+func BuildRequestPayload(cfg config.Config, features Features, job domain.BenchmarkJob) (map[string]any, error) {
+	data, err := os.ReadFile(job.PromptFile)
+	if err != nil {
+		return nil, fmt.Errorf("read prompt %s: %w", job.PromptFile, err)
+	}
+	prompt := string(data)
+	payload := map[string]any{}
+	switch EndpointKind(cfg) {
+	case "chat":
+		payload["messages"] = []map[string]string{{"role": "user", "content": prompt}}
+		payload["max_tokens"] = cfg.Run.GenerationTokens
+		payload["stream"] = false
+		if len(cfg.Run.ChatTemplateKwargs) > 0 {
+			payload["chat_template_kwargs"] = cfg.Run.ChatTemplateKwargs
+		}
+	case "completion":
+		payload["prompt"] = prompt
+		payload["n_predict"] = cfg.Run.GenerationTokens
+		payload["stream"] = false
+		payload["cache_prompt"] = cfg.Run.CachePrompt
+		payload["id_slot"] = 0
+	default:
+		return nil, fmt.Errorf("unsupported run.endpoint: %s", cfg.Run.Endpoint)
+	}
+	if cfg.Run.Seed != nil {
+		payload["seed"] = *cfg.Run.Seed
+	}
+	for key, value := range RequestArgs(features) {
+		payload[key] = value
+	}
+	return payload, nil
+}
+
+// BuildServerCommand constructs the command-line arguments for llama-server.
 func BuildServerCommand(cfg config.Config, features Features, job domain.BenchmarkJob, port int, _ string) []string {
 	flags := features.Flags.LlamaServer
 	model := cfg.ModelHF()
@@ -54,89 +144,4 @@ func BuildServerCommand(cfg config.Config, features Features, job domain.Benchma
 		}
 	}
 	return cmd
-}
-
-func CommandToShell(cmd []string) string {
-	parts := make([]string, len(cmd))
-	for i, part := range cmd {
-		parts[i] = shellQuote(part)
-	}
-	return strings.Join(parts, " ")
-}
-
-func EndpointKind(cfg config.Config) string {
-	value := strings.ToLower(strings.TrimSpace(cfg.Run.Endpoint))
-	switch value {
-	case "", "chat", "chat-completions", "chat_completions", "/v1/chat/completions":
-		return "chat"
-	case "completion", "completions", "/completion":
-		return "completion"
-	default:
-		return value
-	}
-}
-
-func EndpointPath(kind string) string {
-	if kind == "chat" {
-		return "/v1/chat/completions"
-	}
-	return "/completion"
-}
-
-func BuildRequestPayload(cfg config.Config, features Features, job domain.BenchmarkJob) (map[string]any, error) {
-	data, err := os.ReadFile(job.PromptFile)
-	if err != nil {
-		return nil, fmt.Errorf("read prompt %s: %w", job.PromptFile, err)
-	}
-	prompt := string(data)
-	payload := map[string]any{}
-	switch EndpointKind(cfg) {
-	case "chat":
-		payload["messages"] = []map[string]string{{"role": "user", "content": prompt}}
-		payload["max_tokens"] = cfg.Run.GenerationTokens
-		payload["stream"] = false
-		if len(cfg.Run.ChatTemplateKwargs) > 0 {
-			payload["chat_template_kwargs"] = cfg.Run.ChatTemplateKwargs
-		}
-	case "completion":
-		payload["prompt"] = prompt
-		payload["n_predict"] = cfg.Run.GenerationTokens
-		payload["stream"] = false
-		payload["cache_prompt"] = cfg.Run.CachePrompt
-		payload["id_slot"] = 0
-	default:
-		return nil, fmt.Errorf("unsupported run.endpoint: %s", cfg.Run.Endpoint)
-	}
-	if cfg.Run.Seed != nil {
-		payload["seed"] = *cfg.Run.Seed
-	}
-	for key, value := range RequestArgs(features) {
-		payload[key] = value
-	}
-	return payload, nil
-}
-
-func appendExtraArgs(cmd []string, args []config.ExtraArg) []string {
-	for _, item := range args {
-		if item.Value == nil || item.Value == false {
-			continue
-		}
-		cmd = append(cmd, item.Flag)
-		if item.Value != true {
-			cmd = append(cmd, fmt.Sprint(item.Value))
-		}
-	}
-	return cmd
-}
-
-func shellQuote(value string) string {
-	if value == "" {
-		return "''"
-	}
-	if strings.IndexFunc(value, func(r rune) bool {
-		return !(r == '-' || r == '_' || r == '/' || r == '.' || r == ':' || r == '=' || r == '+' || r == ',' || r == '%' || r >= '0' && r <= '9' || r >= 'A' && r <= 'Z' || r >= 'a' && r <= 'z')
-	}) == -1 {
-		return value
-	}
-	return "'" + strings.ReplaceAll(value, "'", "'\\''") + "'"
 }

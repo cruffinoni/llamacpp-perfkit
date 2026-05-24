@@ -16,107 +16,38 @@ import (
 	"github.com/cruffinoni/llamacpp-perfkit/internal/storage"
 )
 
-type SystemCollector struct {
-	RunDir   string
-	Interval time.Duration
+func nowISO() string {
+	return time.Now().UTC().Format(time.RFC3339Nano)
 }
 
-func (c SystemCollector) Run(ctx context.Context) error {
-	interval := c.Interval
-	if interval <= 0 {
-		interval = time.Second
+func numeric(value any) *float64 {
+	switch typed := value.(type) {
+	case int:
+		out := float64(typed)
+		return &out
+	case int64:
+		out := float64(typed)
+		return &out
+	case float64:
+		return &typed
+	case float32:
+		out := float64(typed)
+		return &out
 	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	if err := storage.AppendSystemMetric(c.RunDir, SampleSystem()); err != nil {
-		return err
-	}
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			if err := storage.AppendSystemMetric(c.RunDir, SampleSystem()); err != nil {
-				return err
-			}
-		}
-	}
+	return nil
 }
 
-func SampleSystem() domain.SystemMetricSample {
-	sample := domain.SystemMetricSample{Time: nowISO()}
-	if gpu := sampleGPU(); gpu != nil {
-		sample.VRAMUsed = gpu["vram_used_mib"]
-		sample.VRAMFree = gpu["vram_free_mib"]
-		sample.GPUUtilPct = gpu["gpu_util_pct"]
-		sample.GPUPowerW = gpu["gpu_power_w"]
-		sample.GPUTempC = gpu["gpu_temp_c"]
+func maxFloat(values []float64) *float64 {
+	if len(values) == 0 {
+		return nil
 	}
-	ramUsed, ramFree := sampleRAM()
-	sample.RAMUsed = ramUsed
-	sample.RAMFree = ramFree
-	return sample
-}
-
-type LlamaCollector struct {
-	BaseURL  string
-	RunDir   string
-	Interval time.Duration
-}
-
-func (c LlamaCollector) Run(ctx context.Context) error {
-	interval := c.Interval
-	if interval <= 0 {
-		interval = time.Second
-	}
-	ticker := time.NewTicker(interval)
-	defer ticker.Stop()
-	if sample, ok := c.SampleOnce(ctx); ok {
-		if err := storage.AppendLlamaMetric(c.RunDir, sample); err != nil {
-			return err
+	out := values[0]
+	for _, value := range values[1:] {
+		if value > out {
+			out = value
 		}
 	}
-	for {
-		select {
-		case <-ctx.Done():
-			return nil
-		case <-ticker.C:
-			if sample, ok := c.SampleOnce(ctx); ok {
-				if err := storage.AppendLlamaMetric(c.RunDir, sample); err != nil {
-					return err
-				}
-			}
-		}
-	}
-}
-
-func (c LlamaCollector) SampleOnce(parent context.Context) (domain.LlamaCppMetricSample, bool) {
-	sample := domain.LlamaCppMetricSample{Time: nowISO()}
-	found := false
-	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
-	body, status, err := getJSON(ctx, strings.TrimRight(c.BaseURL, "/")+"/slots")
-	cancel()
-	if err == nil && status == http.StatusOK {
-		if applySlots(&sample, body) {
-			found = true
-		}
-	}
-
-	ctx, cancel = context.WithTimeout(parent, 2*time.Second)
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.BaseURL, "/")+"/metrics", nil)
-	if err == nil {
-		resp, err := http.DefaultClient.Do(req)
-		if err == nil {
-			data, _ := ioReadAllAndClose(resp.Body)
-			if resp.StatusCode == http.StatusOK && len(data) > 0 {
-				if applyPrometheus(&sample, string(data)) {
-					found = true
-				}
-			}
-		}
-	}
-	cancel()
-	return sample, found
+	return &out
 }
 
 func sampleGPU() map[string]*float64 {
@@ -188,6 +119,49 @@ func sampleRAM() (*float64, *float64) {
 	return &used, &free
 }
 
+func applyPrometheus(sample *domain.LlamaCppMetricSample, text string) bool {
+	found := false
+	for _, line := range strings.Split(text, "\n") {
+		line = strings.TrimSpace(line)
+		if line == "" || strings.HasPrefix(line, "#") {
+			continue
+		}
+		parts := strings.Fields(line)
+		if len(parts) < 2 {
+			continue
+		}
+		name := strings.ToLower(strings.Split(parts[0], "{")[0])
+		value, err := strconv.ParseFloat(parts[len(parts)-1], 64)
+		if err != nil {
+			continue
+		}
+		v := value
+		switch {
+		case strings.Contains(name, "prompt") && strings.Contains(name, "per_second"):
+			if sample.PromptEvalTokS == nil {
+				sample.PromptEvalTokS = &v
+				found = true
+			}
+		case (strings.Contains(name, "predicted") || strings.Contains(name, "generation") || strings.Contains(name, "eval")) && strings.Contains(name, "per_second"):
+			if sample.GenerationTokS == nil {
+				sample.GenerationTokS = &v
+				found = true
+			}
+		case strings.Contains(name, "prompt") && strings.Contains(name, "token"):
+			if sample.PromptTokens == nil {
+				sample.PromptTokens = &v
+				found = true
+			}
+		case (strings.Contains(name, "predicted") || strings.Contains(name, "generation") || strings.Contains(name, "eval")) && strings.Contains(name, "token"):
+			if sample.GeneratedTokens == nil {
+				sample.GeneratedTokens = &v
+				found = true
+			}
+		}
+	}
+	return found
+}
+
 func applySlots(sample *domain.LlamaCppMetricSample, body any) bool {
 	var slots []any
 	if raw, ok := body.([]any); ok {
@@ -234,83 +208,6 @@ func applySlots(sample *domain.LlamaCppMetricSample, body any) bool {
 	return true
 }
 
-func applyPrometheus(sample *domain.LlamaCppMetricSample, text string) bool {
-	found := false
-	for _, line := range strings.Split(text, "\n") {
-		line = strings.TrimSpace(line)
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.Fields(line)
-		if len(parts) < 2 {
-			continue
-		}
-		name := strings.ToLower(strings.Split(parts[0], "{")[0])
-		value, err := strconv.ParseFloat(parts[len(parts)-1], 64)
-		if err != nil {
-			continue
-		}
-		v := value
-		switch {
-		case strings.Contains(name, "prompt") && strings.Contains(name, "per_second"):
-			if sample.PromptEvalTokS == nil {
-				sample.PromptEvalTokS = &v
-				found = true
-			}
-		case (strings.Contains(name, "predicted") || strings.Contains(name, "generation") || strings.Contains(name, "eval")) && strings.Contains(name, "per_second"):
-			if sample.GenerationTokS == nil {
-				sample.GenerationTokS = &v
-				found = true
-			}
-		case strings.Contains(name, "prompt") && strings.Contains(name, "token"):
-			if sample.PromptTokens == nil {
-				sample.PromptTokens = &v
-				found = true
-			}
-		case (strings.Contains(name, "predicted") || strings.Contains(name, "generation") || strings.Contains(name, "eval")) && strings.Contains(name, "token"):
-			if sample.GeneratedTokens == nil {
-				sample.GeneratedTokens = &v
-				found = true
-			}
-		}
-	}
-	return found
-}
-
-func numeric(value any) *float64 {
-	switch typed := value.(type) {
-	case int:
-		out := float64(typed)
-		return &out
-	case int64:
-		out := float64(typed)
-		return &out
-	case float64:
-		return &typed
-	case float32:
-		out := float64(typed)
-		return &out
-	}
-	return nil
-}
-
-func maxFloat(values []float64) *float64 {
-	if len(values) == 0 {
-		return nil
-	}
-	out := values[0]
-	for _, value := range values[1:] {
-		if value > out {
-			out = value
-		}
-	}
-	return &out
-}
-
-func nowISO() string {
-	return time.Now().UTC().Format(time.RFC3339Nano)
-}
-
 func getJSON(ctx context.Context, url string) (any, int, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -320,6 +217,7 @@ func getJSON(ctx context.Context, url string) (any, int, error) {
 	if err != nil {
 		return nil, 0, err
 	}
+	defer resp.Body.Close()
 	data, err := ioReadAllAndClose(resp.Body)
 	if err != nil {
 		return nil, resp.StatusCode, err
@@ -329,4 +227,114 @@ func getJSON(ctx context.Context, url string) (any, int, error) {
 		return nil, resp.StatusCode, err
 	}
 	return decoded, resp.StatusCode, nil
+}
+
+// SampleSystem collects current system metrics (GPU and RAM).
+func SampleSystem() domain.SystemMetricSample {
+	sample := domain.SystemMetricSample{Time: nowISO()}
+	if gpu := sampleGPU(); gpu != nil {
+		sample.VRAMUsed = gpu["vram_used_mib"]
+		sample.VRAMFree = gpu["vram_free_mib"]
+		sample.GPUUtilPct = gpu["gpu_util_pct"]
+		sample.GPUPowerW = gpu["gpu_power_w"]
+		sample.GPUTempC = gpu["gpu_temp_c"]
+	}
+	ramUsed, ramFree := sampleRAM()
+	sample.RAMUsed = ramUsed
+	sample.RAMFree = ramFree
+	return sample
+}
+
+// SystemCollector collects system metrics at a regular interval.
+type SystemCollector struct {
+	RunDir   string
+	Interval time.Duration
+}
+
+// Run starts collecting system metrics on an interval until the context is cancelled.
+func (c SystemCollector) Run(ctx context.Context) error {
+	interval := c.Interval
+	if interval <= 0 {
+		interval = time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	if err := storage.AppendSystemMetric(c.RunDir, SampleSystem()); err != nil {
+		return err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if err := storage.AppendSystemMetric(c.RunDir, SampleSystem()); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// LlamaCollector collects llama.cpp metrics at a regular interval.
+type LlamaCollector struct {
+	BaseURL  string
+	RunDir   string
+	Interval time.Duration
+}
+
+// SampleOnce performs a single snapshot of llama.cpp metrics from the server.
+func (c LlamaCollector) SampleOnce(parent context.Context) (domain.LlamaCppMetricSample, bool) {
+	sample := domain.LlamaCppMetricSample{Time: nowISO()}
+	found := false
+	ctx, cancel := context.WithTimeout(parent, 2*time.Second)
+	body, status, err := getJSON(ctx, strings.TrimRight(c.BaseURL, "/")+"/slots")
+	cancel()
+	if err == nil && status == http.StatusOK {
+		if applySlots(&sample, body) {
+			found = true
+		}
+	}
+
+	ctx, cancel = context.WithTimeout(parent, 2*time.Second)
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, strings.TrimRight(c.BaseURL, "/")+"/metrics", nil)
+	if err == nil {
+		resp, err := http.DefaultClient.Do(req)
+		if err == nil {
+			defer resp.Body.Close()
+			data, _ := ioReadAllAndClose(resp.Body)
+			if resp.StatusCode == http.StatusOK && len(data) > 0 {
+				if applyPrometheus(&sample, string(data)) {
+					found = true
+				}
+			}
+		}
+	}
+	cancel()
+	return sample, found
+}
+
+// Run starts collecting llama.cpp metrics on an interval until the context is cancelled.
+func (c LlamaCollector) Run(ctx context.Context) error {
+	interval := c.Interval
+	if interval <= 0 {
+		interval = time.Second
+	}
+	ticker := time.NewTicker(interval)
+	defer ticker.Stop()
+	if sample, ok := c.SampleOnce(ctx); ok {
+		if err := storage.AppendLlamaMetric(c.RunDir, sample); err != nil {
+			return err
+		}
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return nil
+		case <-ticker.C:
+			if sample, ok := c.SampleOnce(ctx); ok {
+				if err := storage.AppendLlamaMetric(c.RunDir, sample); err != nil {
+					return err
+				}
+			}
+		}
+	}
 }

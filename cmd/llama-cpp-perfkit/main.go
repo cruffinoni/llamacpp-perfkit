@@ -7,10 +7,14 @@ import (
 	"os/signal"
 	"syscall"
 
+	"github.com/charmbracelet/lipgloss"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/cli"
+	"github.com/muesli/termenv"
 )
 
 func main() {
+	lipgloss.SetColorProfile(termenv.TrueColor)
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 

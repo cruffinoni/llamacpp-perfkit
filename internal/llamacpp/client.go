@@ -10,10 +10,13 @@ import (
 	"time"
 )
 
+// Client sends HTTP requests to a llama.cpp server and decodes JSON responses.
 type Client struct {
 	HTTP *http.Client
 }
 
+// NewClient creates a Client with the given HTTP client.
+// If httpClient is nil, http.DefaultClient is used.
 func NewClient(httpClient *http.Client) Client {
 	if httpClient == nil {
 		httpClient = http.DefaultClient
@@ -21,12 +24,14 @@ func NewClient(httpClient *http.Client) Client {
 	return Client{HTTP: httpClient}
 }
 
+// JSONResponse holds the decoded response from a JSON API call.
 type JSONResponse struct {
 	StatusCode int
 	Body       map[string]any
 	Text       string
 }
 
+// JSON sends an HTTP request and decodes the JSON response body.
 func (c Client) JSON(ctx context.Context, method, url string, payload map[string]any) (JSONResponse, error) {
 	var body io.Reader
 	if payload != nil {
@@ -60,6 +65,7 @@ func (c Client) JSON(ctx context.Context, method, url string, payload map[string
 	return JSONResponse{StatusCode: resp.StatusCode, Body: decoded, Text: text}, nil
 }
 
+// WaitHealthy polls the server health endpoint until it responds OK or the timeout expires.
 func (c Client) WaitHealthy(ctx context.Context, baseURL string, startupTimeout time.Duration) error {
 	if startupTimeout <= 0 {
 		startupTimeout = time.Second
@@ -97,11 +103,13 @@ func (c Client) WaitHealthy(ctx context.Context, baseURL string, startupTimeout 
 	}
 }
 
+// HTTPJSON is a convenience function for making a JSON HTTP request.
 func HTTPJSON(ctx context.Context, method, url string, payload map[string]any) (int, map[string]any, string, error) {
 	resp, err := NewClient(nil).JSON(ctx, method, url, payload)
 	return resp.StatusCode, resp.Body, resp.Text, err
 }
 
+// WaitHealthy is a convenience function that waits for a server to become healthy.
 func WaitHealthy(ctx context.Context, baseURL string, startupTimeout time.Duration) error {
 	return NewClient(nil).WaitHealthy(ctx, baseURL, startupTimeout)
 }

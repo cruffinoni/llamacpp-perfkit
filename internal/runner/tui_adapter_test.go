@@ -5,11 +5,11 @@ import (
 	"time"
 
 	"github.com/cruffinoni/llamacpp-perfkit/internal/domain"
-	"github.com/cruffinoni/llamacpp-perfkit/internal/tui"
+	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/viewmodel"
 )
 
 func TestTUIAdapterStateTransitions(t *testing.T) {
-	updates := make(chan tui.StateUpdate, 8)
+	updates := make(chan viewmodel.StateUpdate, 8)
 	adapter := newTUIAdapter(updates, nowTimeForTest())
 	item := domain.PlannedRun{Job: domain.BenchmarkJob{PromptProfile: domain.PromptProfile{Name: "code"}, ServerConfig: domain.ServerConfig{ContextSize: 2048, KVType: "q8_0"}}}
 	server := serverExecution{ID: "server-a"}
@@ -24,7 +24,7 @@ func TestTUIAdapterStateTransitions(t *testing.T) {
 	adapter.CompleteGroup(1, 1)
 	adapter.CompleteBenchmark(1)
 
-	state := tui.BenchmarkTUIState{}
+	state := viewmodel.BenchmarkTUIState{}
 	for len(updates) > 0 {
 		update := <-updates
 		update.Apply(&state)

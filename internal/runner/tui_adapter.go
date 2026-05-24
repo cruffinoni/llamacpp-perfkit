@@ -4,24 +4,25 @@ import (
 	"time"
 
 	"github.com/cruffinoni/llamacpp-perfkit/internal/domain"
-	"github.com/cruffinoni/llamacpp-perfkit/internal/tui"
+	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/viewmodel"
 )
 
 type tuiAdapter struct {
-	updates chan<- tui.StateUpdate
+	updates chan<- viewmodel.StateUpdate
 	started time.Time
 }
 
-func newTUIAdapter(updates chan<- tui.StateUpdate, started time.Time) tuiAdapter {
+func newTUIAdapter(updates chan<- viewmodel.StateUpdate, started time.Time) tuiAdapter {
 	return tuiAdapter{updates: updates, started: started}
 }
 
+// BeginGroup initialises the TUI state for a new server group.
 func (a tuiAdapter) BeginGroup(server serverExecution, group []domain.PlannedRun, groupIndex int, totalGroups int) {
 	job := group[0].Job
-	a.send(func(s *tui.BenchmarkTUIState) {
+	a.send(func(s *viewmodel.BenchmarkTUIState) {
 		s.Progress.ServersTotal = totalGroups
 		s.Progress.CurrentPromptTotal = len(group)
-		s.CurrentServer = &tui.CurrentServerView{
+		s.CurrentServer = &viewmodel.CurrentServerView{
 			ID:          server.ID,
 			ContextSize: job.ServerConfig.ContextSize,
 			KVType:      job.ServerConfig.KVType,
@@ -32,7 +33,7 @@ func (a tuiAdapter) BeginGroup(server serverExecution, group []domain.PlannedRun
 		}
 		s.PromptJobs = nil
 		for _, item := range group {
-			s.UpsertPrompt(tui.PromptJobView{Profile: item.Job.PromptProfile.Name, Status: "pending", Phase: "-"})
+			s.UpsertPrompt(viewmodel.PromptJobView{Profile: item.Job.PromptProfile.Name, Status: "pending", Phase: "-"})
 		}
 		s.LifecycleState = "starting server"
 		s.StatusMessage = "Launching " + server.ID + "."
@@ -40,20 +41,22 @@ func (a tuiAdapter) BeginGroup(server serverExecution, group []domain.PlannedRun
 	_ = groupIndex
 }
 
+// BeginPrompt updates the TUI state when a prompt evaluation begins.
 func (a tuiAdapter) BeginPrompt(item domain.PlannedRun, promptIndex int) {
-	a.send(func(s *tui.BenchmarkTUIState) {
+	a.send(func(s *viewmodel.BenchmarkTUIState) {
 		s.Progress.CurrentPrompt = promptIndex + 1
 		s.LifecycleState = "running prompt"
 		s.StatusMessage = "Running " + item.Job.PromptProfile.Name + "."
-		s.UpsertPrompt(tui.PromptJobView{Profile: item.Job.PromptProfile.Name, Status: "running", Phase: "starting"})
+		s.UpsertPrompt(viewmodel.PromptJobView{Profile: item.Job.PromptProfile.Name, Status: "running", Phase: "starting"})
 	})
 }
 
+// CompletePrompt updates the TUI state when a prompt evaluation completes.
 func (a tuiAdapter) CompletePrompt(item domain.PlannedRun, result requestResult, jobsCompleted int) {
-	a.send(func(s *tui.BenchmarkTUIState) {
+	a.send(func(s *viewmodel.BenchmarkTUIState) {
 		s.Progress.JobsCompleted = jobsCompleted
 		s.ElapsedSeconds = time.Since(a.started).Seconds()
-		s.UpsertPrompt(tui.PromptJobView{
+		s.UpsertPrompt(viewmodel.PromptJobView{
 			Profile:         item.Job.PromptProfile.Name,
 			Status:          string(result.Status),
 			Phase:           phaseForStatus(result.Status),
@@ -66,25 +69,28 @@ func (a tuiAdapter) CompletePrompt(item domain.PlannedRun, result requestResult,
 	})
 }
 
+// StartupFailedPrompt records a server startup failure in the TUI state.
 func (a tuiAdapter) StartupFailedPrompt(item domain.PlannedRun, errText string, duration float64, jobsCompleted int) {
-	a.send(func(s *tui.BenchmarkTUIState) {
+	a.send(func(s *viewmodel.BenchmarkTUIState) {
 		s.Progress.JobsCompleted = jobsCompleted
 		s.ElapsedSeconds = time.Since(a.started).Seconds()
-		s.UpsertPrompt(tui.PromptJobView{Profile: item.Job.PromptProfile.Name, Status: "failed", Phase: "failed", DurationSeconds: &duration})
+		s.UpsertPrompt(viewmodel.PromptJobView{Profile: item.Job.PromptProfile.Name, Status: "failed", Phase: "failed", DurationSeconds: &duration})
 		s.StatusMessage = errText
 	})
 }
 
+// CompleteGroup updates the TUI state when a server group finishes.
 func (a tuiAdapter) CompleteGroup(groupIndex int, totalGroups int) {
-	a.send(func(s *tui.BenchmarkTUIState) {
+	a.send(func(s *viewmodel.BenchmarkTUIState) {
 		s.Progress.ServersCompleted = groupIndex
 		s.ElapsedSeconds = time.Since(a.started).Seconds()
 		s.ETASeconds = estimateETA(s.Progress.ServersCompleted, totalGroups, s.ElapsedSeconds)
 	})
 }
 
+// CompleteBenchmark marks the benchmark as complete in the TUI state.
 func (a tuiAdapter) CompleteBenchmark(totalGroups int) {
-	a.send(func(s *tui.BenchmarkTUIState) {
+	a.send(func(s *viewmodel.BenchmarkTUIState) {
 		s.LifecycleState = "complete"
 		s.StatusMessage = "No runnable jobs remain."
 		s.ElapsedSeconds = time.Since(a.started).Seconds()
@@ -92,13 +98,13 @@ func (a tuiAdapter) CompleteBenchmark(totalGroups int) {
 	})
 }
 
-func (a tuiAdapter) send(apply func(*tui.BenchmarkTUIState)) {
+func (a tuiAdapter) send(apply func(*viewmodel.BenchmarkTUIState)) {
 	if a.updates == nil {
 		return
 	}
 	select {
-	case a.updates <- tui.StateUpdate{Apply: apply}:
+	case a.updates <- viewmodel.StateUpdate{Apply: apply}:
 	default:
-		a.updates <- tui.StateUpdate{Apply: apply}
+		a.updates <- viewmodel.StateUpdate{Apply: apply}
 	}
 }

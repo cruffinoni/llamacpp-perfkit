@@ -6,76 +6,6 @@ import (
 	"github.com/cruffinoni/llamacpp-perfkit/internal/domain"
 )
 
-func SummarizeSystem(samples []domain.SystemMetricSample) domain.SystemSummary {
-	vramFree := values(samples, func(s domain.SystemMetricSample) *float64 { return s.VRAMFree })
-	vramUsed := values(samples, func(s domain.SystemMetricSample) *float64 { return s.VRAMUsed })
-	ramFree := values(samples, func(s domain.SystemMetricSample) *float64 { return s.RAMFree })
-	ramUsed := values(samples, func(s domain.SystemMetricSample) *float64 { return s.RAMUsed })
-	gpuUtil := values(samples, func(s domain.SystemMetricSample) *float64 { return s.GPUUtilPct })
-	gpuPower := values(samples, func(s domain.SystemMetricSample) *float64 { return s.GPUPowerW })
-	gpuTemp := values(samples, func(s domain.SystemMetricSample) *float64 { return s.GPUTempC })
-	return domain.SystemSummary{
-		PeakVRAMMiB:     maxPtr(vramUsed),
-		MinVRAMFreeMiB:  minPtr(vramFree),
-		MeanVRAMFreeMiB: meanPtr(vramFree),
-		PeakRAMMiB:      maxPtr(ramUsed),
-		MinRAMFreeMiB:   minPtr(ramFree),
-		AvgGPUUtilPct:   meanPtr(gpuUtil),
-		PeakGPUPowerW:   maxPtr(gpuPower),
-		PeakGPUTempC:    maxPtr(gpuTemp),
-	}
-}
-
-func SummarizeLlama(samples []domain.LlamaCppMetricSample) domain.LlamaSummary {
-	generation := values(samples, func(s domain.LlamaCppMetricSample) *float64 { return s.GenerationTokS })
-	prompt := values(samples, func(s domain.LlamaCppMetricSample) *float64 { return s.PromptEvalTokS })
-	generatedTokens := values(samples, func(s domain.LlamaCppMetricSample) *float64 {
-		if s.GeneratedTokens != nil {
-			return s.GeneratedTokens
-		}
-		return s.EvalTokens
-	})
-	promptTokens := values(samples, func(s domain.LlamaCppMetricSample) *float64 {
-		if s.PromptTokens != nil {
-			return s.PromptTokens
-		}
-		return s.PromptEvalTokens
-	})
-	totalTime := values(samples, func(s domain.LlamaCppMetricSample) *float64 { return s.TotalTimeSeconds })
-	ttft := values(samples, func(s domain.LlamaCppMetricSample) *float64 { return s.TTFTSeconds })
-	return domain.LlamaSummary{
-		GenerationTokS:  lastPtr(generation),
-		PromptEvalTokS:  lastPtr(prompt),
-		TokensGenerated: maxPtr(generatedTokens),
-		TokensPrompt:    maxPtr(promptTokens),
-		TotalTimeSec:    lastPtr(totalTime),
-		TTFTSeconds:     lastPtr(ttft),
-	}
-}
-
-func TerminalLlamaSample(timeValue string, parsed map[string]any, durationSeconds float64) domain.LlamaCppMetricSample {
-	promptTokens := numberPtr(parsed["tokens_prompt"])
-	generatedTokens := numberPtr(parsed["tokens_generated"])
-	promptTokS := numberPtr(parsed["prompt_eval_tok_s"])
-	generationTokS := numberPtr(parsed["generation_tok_s"])
-	var totalTokens *float64
-	if promptTokens != nil && generatedTokens != nil {
-		out := *promptTokens + *generatedTokens
-		totalTokens = &out
-	}
-	return domain.LlamaCppMetricSample{
-		Time:             timeValue,
-		PromptTokens:     promptTokens,
-		GeneratedTokens:  generatedTokens,
-		PromptEvalTokens: promptTokens,
-		EvalTokens:       generatedTokens,
-		PromptEvalTokS:   promptTokS,
-		GenerationTokS:   generationTokS,
-		TotalTokens:      totalTokens,
-		TotalTimeSeconds: &durationSeconds,
-	}
-}
-
 func values[T any](samples []T, pick func(T) *float64) []float64 {
 	out := make([]float64, 0, len(samples))
 	for _, sample := range samples {
@@ -151,4 +81,77 @@ func numberPtr(value any) *float64 {
 		}
 	}
 	return nil
+}
+
+// TerminalLlamaSample creates a terminal llama.cpp metric sample from parsed output.
+func TerminalLlamaSample(timeValue string, parsed map[string]any, durationSeconds float64) domain.LlamaCppMetricSample {
+	promptTokens := numberPtr(parsed["tokens_prompt"])
+	generatedTokens := numberPtr(parsed["tokens_generated"])
+	promptTokS := numberPtr(parsed["prompt_eval_tok_s"])
+	generationTokS := numberPtr(parsed["generation_tok_s"])
+	var totalTokens *float64
+	if promptTokens != nil && generatedTokens != nil {
+		out := *promptTokens + *generatedTokens
+		totalTokens = &out
+	}
+	return domain.LlamaCppMetricSample{
+		Time:             timeValue,
+		PromptTokens:     promptTokens,
+		GeneratedTokens:  generatedTokens,
+		PromptEvalTokens: promptTokens,
+		EvalTokens:       generatedTokens,
+		PromptEvalTokS:   promptTokS,
+		GenerationTokS:   generationTokS,
+		TotalTokens:      totalTokens,
+		TotalTimeSeconds: &durationSeconds,
+	}
+}
+
+// SummarizeLlama computes aggregate llama.cpp metrics from metric samples.
+func SummarizeLlama(samples []domain.LlamaCppMetricSample) domain.LlamaSummary {
+	generation := values(samples, func(s domain.LlamaCppMetricSample) *float64 { return s.GenerationTokS })
+	prompt := values(samples, func(s domain.LlamaCppMetricSample) *float64 { return s.PromptEvalTokS })
+	generatedTokens := values(samples, func(s domain.LlamaCppMetricSample) *float64 {
+		if s.GeneratedTokens != nil {
+			return s.GeneratedTokens
+		}
+		return s.EvalTokens
+	})
+	promptTokens := values(samples, func(s domain.LlamaCppMetricSample) *float64 {
+		if s.PromptTokens != nil {
+			return s.PromptTokens
+		}
+		return s.PromptEvalTokens
+	})
+	totalTime := values(samples, func(s domain.LlamaCppMetricSample) *float64 { return s.TotalTimeSeconds })
+	ttft := values(samples, func(s domain.LlamaCppMetricSample) *float64 { return s.TTFTSeconds })
+	return domain.LlamaSummary{
+		GenerationTokS:  lastPtr(generation),
+		PromptEvalTokS:  lastPtr(prompt),
+		TokensGenerated: maxPtr(generatedTokens),
+		TokensPrompt:    maxPtr(promptTokens),
+		TotalTimeSec:    lastPtr(totalTime),
+		TTFTSeconds:     lastPtr(ttft),
+	}
+}
+
+// SummarizeSystem computes aggregate system metrics from metric samples.
+func SummarizeSystem(samples []domain.SystemMetricSample) domain.SystemSummary {
+	vramFree := values(samples, func(s domain.SystemMetricSample) *float64 { return s.VRAMFree })
+	vramUsed := values(samples, func(s domain.SystemMetricSample) *float64 { return s.VRAMUsed })
+	ramFree := values(samples, func(s domain.SystemMetricSample) *float64 { return s.RAMFree })
+	ramUsed := values(samples, func(s domain.SystemMetricSample) *float64 { return s.RAMUsed })
+	gpuUtil := values(samples, func(s domain.SystemMetricSample) *float64 { return s.GPUUtilPct })
+	gpuPower := values(samples, func(s domain.SystemMetricSample) *float64 { return s.GPUPowerW })
+	gpuTemp := values(samples, func(s domain.SystemMetricSample) *float64 { return s.GPUTempC })
+	return domain.SystemSummary{
+		PeakVRAMMiB:     maxPtr(vramUsed),
+		MinVRAMFreeMiB:  minPtr(vramFree),
+		MeanVRAMFreeMiB: meanPtr(vramFree),
+		PeakRAMMiB:      maxPtr(ramUsed),
+		MinRAMFreeMiB:   minPtr(ramFree),
+		AvgGPUUtilPct:   meanPtr(gpuUtil),
+		PeakGPUPowerW:   maxPtr(gpuPower),
+		PeakGPUTempC:    maxPtr(gpuTemp),
+	}
 }

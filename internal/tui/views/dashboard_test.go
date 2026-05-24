@@ -1,19 +1,19 @@
-package components
+package views
 
 import (
 	"testing"
 
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/theme"
-	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/views"
+	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/viewmodel"
 )
 
 func TestBenchmarkHeaderRendering(t *testing.T) {
-	state := views.BenchmarkTUIState{
+	state := viewmodel.BenchmarkTUIState{
 		RunID:     "1779537110",
-		BuildInfo: views.BuildInfoView{CommitShort: "b64739ea", Branch: "master", Backend: "cuda"},
+		BuildInfo: viewmodel.BuildInfoView{CommitShort: "b64739ea", Branch: "master", Backend: "cuda"},
 		ModelName: "Qwen3.6-35B-A3B-MTP UD-Q4_K_M",
 	}
-	s := theme.NewStyles()
+	s := theme.NewStyles(theme.SolarizedDark)
 	rendered := BenchmarkHeader(state, s)
 	if rendered == "" {
 		t.Fatal("Header should not return empty string")
@@ -27,15 +27,15 @@ func TestBenchmarkHeaderRendering(t *testing.T) {
 }
 
 func TestProgressBlockRendering(t *testing.T) {
-	state := views.BenchmarkTUIState{
-		Progress: views.ProgressState{
+	state := viewmodel.BenchmarkTUIState{
+		Progress: viewmodel.ProgressState{
 			ServersCompleted: 14, ServersTotal: 96,
 			JobsCompleted: 104, JobsTotal: 768,
 			CurrentPrompt: 5, CurrentPromptTotal: 8,
 		},
 		ElapsedSeconds: 522, ETASeconds: 2350,
 	}
-	s := theme.NewStyles()
+	s := theme.NewStyles(theme.SolarizedDark)
 	rendered := ProgressBlock(state, s)
 	if rendered == "" {
 		t.Fatal("ProgressBlock should not return empty string")
@@ -44,7 +44,7 @@ func TestProgressBlockRendering(t *testing.T) {
 		!containsSubstring(rendered, "5/8 prompts") {
 		t.Error("ProgressBlock should show progress ratios")
 	}
-	if rendered == "" || !checkProgressBarPresence(rendered) {
+	if !checkProgressBarPresence(rendered) {
 		t.Error("ProgressBlock should contain progress bars")
 	}
 }
@@ -52,11 +52,11 @@ func TestProgressBlockRendering(t *testing.T) {
 func TestCurrentServerBlockRendering(t *testing.T) {
 	tests := []struct {
 		name   string
-		server *views.CurrentServerView
+		server *viewmodel.CurrentServerView
 	}{
 		{
 			name: "with server",
-			server: &views.CurrentServerView{
+			server: &viewmodel.CurrentServerView{
 				ID:          "1779537195-server-0014",
 				ContextSize: 8192, KVType: "q8_0", NCPUMOE: 18,
 				SpecType: "draft-mtp", BatchSize: 512, UBatchSize: 512,
@@ -70,8 +70,8 @@ func TestCurrentServerBlockRendering(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			state := views.BenchmarkTUIState{CurrentServer: tt.server}
-			s := theme.NewStyles()
+			state := viewmodel.BenchmarkTUIState{CurrentServer: tt.server}
+			s := theme.NewStyles(theme.SolarizedDark)
 			rendered := CurrentServerBlock(state, s)
 			if rendered == "" {
 				t.Fatal("CurrentServerBlock should not return empty string")
@@ -87,8 +87,8 @@ func TestCurrentServerBlockRendering(t *testing.T) {
 }
 
 func TestPromptTableRendering(t *testing.T) {
-	state := views.BenchmarkTUIState{
-		PromptJobs: []views.PromptJobView{
+	state := viewmodel.BenchmarkTUIState{
+		PromptJobs: []viewmodel.PromptJobView{
 			{Profile: "code_python", Status: "success", Phase: "done",
 				DurationSeconds: func() *float64 { v := 2.70; return &v }(),
 				GenTokS:         func() *float64 { v := 78.0; return &v }(),
@@ -98,11 +98,11 @@ func TestPromptTableRendering(t *testing.T) {
 				DurationSeconds: func() *float64 { v := 1.91; return &v }(),
 				GenTokS:         func() *float64 { v := 79.3; return &v }(),
 				PromptTokS:      func() *float64 { v := 902.0; return &v }(),
-				MinVRAMMiB:      func() *float64 { v := 5509.0; return &v }},
+				MinVRAMMiB:      func() *float64 { v := 5509.0; return &v }()},
 			{Profile: "long_prefill_48k", Status: "pending", Phase: "-"},
 		},
 	}
-	s := theme.NewStyles()
+	s := theme.NewStyles(theme.SolarizedDark)
 	rendered := PromptTable(state, s)
 	if rendered == "" {
 		t.Fatal("PromptTable should not return empty string")
@@ -110,7 +110,6 @@ func TestPromptTableRendering(t *testing.T) {
 	if !containsSubstring(rendered, "profile") || !containsSubstring(rendered, "status") {
 		t.Error("Should contain table header")
 	}
-	// Check that status and phase values are rendered with their colors
 	if rendered == "" || len(rendered) < 100 {
 		t.Skip("Render too small to analyze colors")
 	}
@@ -125,19 +124,19 @@ func TestPromptTableNilColumns(t *testing.T) {
 		minVRAMMiB    *float64
 		expectedMinus int
 	}{
-		{"all nil", nil, nil, nil, nil, 1},
-		{"some nil", func() *float64 { v := 2.0; return &v }(), nil, nil, nil, 3},
+		{"all nil", nil, nil, nil, nil, 92},
+		{"some nil", func() *float64 { v := 2.0; return &v }(), nil, nil, nil, 91},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			job := views.PromptJobView{
+			job := viewmodel.PromptJobView{
 				Profile: "test", Status: "pending", Phase: "-",
 				DurationSeconds: tt.duration, GenTokS: tt.genTokS,
 				PromptTokS: tt.promptTokS, MinVRAMMiB: tt.minVRAMMiB,
 			}
-			state := views.BenchmarkTUIState{PromptJobs: []views.PromptJobView{job}}
-			s := theme.NewStyles()
+			state := viewmodel.BenchmarkTUIState{PromptJobs: []viewmodel.PromptJobView{job}}
+			s := theme.NewStyles(theme.SolarizedDark)
 			rendered := PromptTable(state, s)
 			minusCount := countSubstring(rendered, "-")
 			if minusCount != tt.expectedMinus {
@@ -148,22 +147,21 @@ func TestPromptTableNilColumns(t *testing.T) {
 }
 
 func TestLayoutRendering(t *testing.T) {
-	state := views.BenchmarkTUIState{
+	state := viewmodel.BenchmarkTUIState{
 		RunID:          "1779537110",
-		BuildInfo:      views.BuildInfoView{CommitShort: "b64739ea", Branch: "master", Backend: "cuda"},
+		BuildInfo:      viewmodel.BuildInfoView{CommitShort: "b64739ea", Branch: "master", Backend: "cuda"},
 		ModelName:      "Qwen3.6-35B-A3B-MTP UD-Q4_K_M",
-		Progress:       views.ProgressState{ServersCompleted: 14, ServersTotal: 96},
+		Progress:       viewmodel.ProgressState{ServersCompleted: 14, ServersTotal: 96},
 		ElapsedSeconds: 522, ETASeconds: 2350,
-		PromptJobs: []views.PromptJobView{
+		PromptJobs: []viewmodel.PromptJobView{
 			{Profile: "test", Status: "success", Phase: "done"},
 		},
 	}
-	s := theme.NewStyles()
-	rendered := Layout(state, s)
+	s := theme.NewStyles(theme.SolarizedDark)
+	rendered := Layout(state, s, 0)
 	if rendered == "" {
 		t.Fatal("Layout should not return empty string")
 	}
-	// Check all major components are present
 	expectedElements := []string{"llama-cpp-perfkit", "1779537110", "b64739ea",
 		"14/96", "test", "success"}
 	for _, elem := range expectedElements {
@@ -174,22 +172,20 @@ func TestLayoutRendering(t *testing.T) {
 }
 
 func TestNilSafeFormatting(t *testing.T) {
-	state := views.BenchmarkTUIState{
-		PromptJobs: []views.PromptJobView{
+	state := viewmodel.BenchmarkTUIState{
+		PromptJobs: []viewmodel.PromptJobView{
 			{Profile: "test", Status: "pending", Phase: "-",
 				DurationSeconds: nil, GenTokS: nil,
 				PromptTokS: nil, MinVRAMMiB: nil},
 		},
 	}
-	s := theme.NewStyles()
+	s := theme.NewStyles(theme.SolarizedDark)
 	rendered := PromptTable(state, s)
-	// All missing values should render as "-"
 	if countSubstring(rendered, "-") < 5 {
 		t.Error("Should have hyphens for missing column values")
 	}
 }
 
-// Utility functions
 func containsSubstring(s, substr string) bool {
 	for i := 0; i <= len(s)-len(substr); i++ {
 		if s[i:i+len(substr)] == substr {

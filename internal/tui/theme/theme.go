@@ -2,82 +2,101 @@ package theme
 
 import "github.com/charmbracelet/lipgloss"
 
-// Palette defines the 16-color Solarized Dark palette.
-type Palette struct {
-	BG      lipgloss.Color
-	Panel   lipgloss.Color
-	Border  lipgloss.Color
-	Text    lipgloss.Color
-	Muted   lipgloss.Color
-	Title   lipgloss.Color
-	Accent  lipgloss.Color
-	Cyan    lipgloss.Color
-	Green   lipgloss.Color
-	Yellow  lipgloss.Color
-	Orange  lipgloss.Color
-	Red     lipgloss.Color
-	Magenta lipgloss.Color
-	Blue    lipgloss.Color
+// Theme defines the complete color scheme for the TUI.
+type Theme struct {
+	Background string
+	Panel      string
+	Border     string
+	Text       string
+	Title      string
+	Muted      string
+	Accent     string
+
+	Success string
+	Running string
+	Warning string
+	Error   string
+	Info    string
+
+	ProgressLow  string
+	ProgressMid  string
+	ProgressHigh string
+
+	VramFreeLow  string
+	VramFreeHigh string
+	VramUsedLow  string
+	VramUsedHigh string
 }
 
-var SolarizedDark = Palette{
-	BG:      lipgloss.Color("#002b36"),
-	Panel:   lipgloss.Color("#073642"),
-	Border:  lipgloss.Color("#586e75"),
-	Text:    lipgloss.Color("#839496"),
-	Muted:   lipgloss.Color("#657b83"),
-	Title:   lipgloss.Color("#eee8d5"),
-	Accent:  lipgloss.Color("#b58900"),
-	Cyan:    lipgloss.Color("#2aa198"),
-	Green:   lipgloss.Color("#859900"),
-	Yellow:  lipgloss.Color("#b58900"),
-	Orange:  lipgloss.Color("#cb4b16"),
-	Red:     lipgloss.Color("#dc322f"),
-	Magenta: lipgloss.Color("#d33682"),
-	Blue:    lipgloss.Color("#268bd2"),
+var SolarizedDark = Theme{
+	Background: "#002b36",
+	Panel:      "#073642",
+	Border:     "#586e75",
+	Text:       "#eee8d5",
+	Title:      "#fdf6e3",
+	Muted:      "#586e75",
+	Accent:     "#b58900",
+
+	Success: "#bad600",
+	Running: "#268bd2",
+	Warning: "#d6a200",
+	Error:   "#e02f30",
+	Info:    "#268bd2",
+
+	ProgressLow:  "#4e5900",
+	ProgressMid:  "#d6a200",
+	ProgressHigh: "#bad600",
+
+	VramFreeLow:  "#4e5900",
+	VramFreeHigh: "#bad600",
+	VramUsedLow:  "#6e1718",
+	VramUsedHigh: "#e02f30",
 }
 
 // Styles encapsulates all lipgloss styling primitives.
 type Styles struct {
-	Base     lipgloss.Style
-	Panel    lipgloss.Style
-	Title    lipgloss.Style
-	Label    lipgloss.Style
-	Muted    lipgloss.Style
-	Accent   lipgloss.Style
-	Cyan     lipgloss.Style
-	Green    lipgloss.Style
-	Yellow   lipgloss.Style
-	Orange   lipgloss.Style
-	Red      lipgloss.Style
-	Blue     lipgloss.Style
-	TextBold lipgloss.Style
+	Base       lipgloss.Style
+	Panel      lipgloss.Style
+	Title      lipgloss.Style
+	Label      lipgloss.Style
+	Muted      lipgloss.Style
+	Accent     lipgloss.Style
+	Success    lipgloss.Style
+	Running    lipgloss.Style
+	Warning    lipgloss.Style
+	Error      lipgloss.Style
+	Info       lipgloss.Style
+	TextBold   lipgloss.Style
+	StatusLine lipgloss.Style
 
-	progressBarFilled lipgloss.Style
-	progressBarEmpty  lipgloss.Style
+	PanelBg lipgloss.Color
+	BaseBg  lipgloss.Color
+	TextFg  lipgloss.Color
+	MutedFg lipgloss.Color
 }
 
-// NewStyles builds the complete style set from the palette.
-func NewStyles() Styles {
-	p := SolarizedDark
+// NewStyles builds the complete style set from a theme.
+// Text styles do not set a background — the rendering primitives (LineBuilder,
+// Table, Panel) handle background continuity.
+func NewStyles(t Theme) Styles {
 	return Styles{
-		Base:     lipgloss.NewStyle().Foreground(p.Text).Background(p.BG),
-		Panel:    lipgloss.NewStyle().Foreground(p.Text).Background(p.Panel).Border(lipgloss.RoundedBorder()).BorderForeground(p.Border).Padding(0, 1),
-		Title:    lipgloss.NewStyle().Foreground(p.Title).Bold(true),
-		Label:    lipgloss.NewStyle().Foreground(p.Muted),
-		Muted:    lipgloss.NewStyle().Foreground(p.Muted),
-		Accent:   lipgloss.NewStyle().Foreground(p.Accent).Bold(true),
-		Cyan:     lipgloss.NewStyle().Foreground(p.Cyan),
-		Green:    lipgloss.NewStyle().Foreground(p.Green),
-		Yellow:   lipgloss.NewStyle().Foreground(p.Yellow),
-		Orange:   lipgloss.NewStyle().Foreground(p.Orange),
-		Red:      lipgloss.NewStyle().Foreground(p.Red),
-		Blue:     lipgloss.NewStyle().Foreground(p.Blue),
-		TextBold: lipgloss.NewStyle().Foreground(p.Text).Bold(true),
-
-		// Progress bar colors — filled uses green for completed work, empty is muted
-		progressBarFilled: lipgloss.NewStyle().Foreground(p.Green),
-		progressBarEmpty:  lipgloss.NewStyle().Foreground(p.Muted),
+		Base:       lipgloss.NewStyle().Foreground(lipgloss.Color(t.Text)).Background(lipgloss.Color(t.Background)),
+		Panel:      lipgloss.NewStyle().Foreground(lipgloss.Color(t.Text)).Background(lipgloss.Color(t.Panel)).Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color(t.Border)).Padding(0, 1),
+		Title:      lipgloss.NewStyle().Foreground(lipgloss.Color(t.Title)).Bold(true),
+		Label:      lipgloss.NewStyle().Foreground(lipgloss.Color(t.Muted)),
+		Muted:      lipgloss.NewStyle().Foreground(lipgloss.Color(t.Muted)),
+		Accent:     lipgloss.NewStyle().Foreground(lipgloss.Color(t.Accent)).Bold(true),
+		Success:    lipgloss.NewStyle().Foreground(lipgloss.Color(t.Success)),
+		Running:    lipgloss.NewStyle().Foreground(lipgloss.Color(t.Running)),
+		Warning:    lipgloss.NewStyle().Foreground(lipgloss.Color(t.Warning)),
+		Error:      lipgloss.NewStyle().Foreground(lipgloss.Color(t.Error)),
+		Info:       lipgloss.NewStyle().Foreground(lipgloss.Color(t.Info)),
+		TextBold:   lipgloss.NewStyle().Foreground(lipgloss.Color(t.Text)).Bold(true),
+		StatusLine: lipgloss.NewStyle().Foreground(lipgloss.Color(t.Muted)).Background(lipgloss.Color(t.Background)),
+		PanelBg:    lipgloss.Color(t.Panel),
+		BaseBg:     lipgloss.Color(t.Background),
+		TextFg:     lipgloss.Color(t.Text),
+		MutedFg:    lipgloss.Color(t.Muted),
 	}
 }
 
@@ -85,15 +104,15 @@ func NewStyles() Styles {
 func StatusStyle(s Styles, status string) lipgloss.Style {
 	switch status {
 	case "success":
-		return s.Green
+		return s.Success
 	case "running":
-		return s.Cyan
+		return s.Running
 	case "pending":
 		return s.Muted
 	case "timeout":
-		return s.Yellow
+		return s.Warning
 	case "oom", "failed":
-		return s.Red
+		return s.Error
 	default:
 		return s.Muted
 	}
@@ -103,24 +122,14 @@ func StatusStyle(s Styles, status string) lipgloss.Style {
 func PhaseStyle(s Styles, phase string) lipgloss.Style {
 	switch phase {
 	case "prefill", "generating", "starting":
-		return s.Cyan
+		return s.Info
 	case "done", "pending", "-":
 		return s.Muted
 	case "timeout":
-		return s.Yellow
+		return s.Warning
 	case "oom", "failed":
-		return s.Red
+		return s.Error
 	default:
 		return s.Muted
 	}
-}
-
-// ProgressBarFilled returns the style for filled progress bar segments.
-func ProgressBarFilled() lipgloss.Style {
-	return NewStyles().progressBarFilled
-}
-
-// ProgressBarEmpty returns the style for empty progress bar segments.
-func ProgressBarEmpty() lipgloss.Style {
-	return NewStyles().progressBarEmpty
 }

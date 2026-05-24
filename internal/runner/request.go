@@ -14,11 +14,6 @@ import (
 	metricsummary "github.com/cruffinoni/llamacpp-perfkit/internal/summary"
 )
 
-type requestExecutor struct {
-	runner *Runner
-	client llamacpp.Client
-}
-
 type requestResult struct {
 	Summary         domain.RunSummary
 	Loaded          domain.LoadedRun
@@ -27,7 +22,71 @@ type requestResult struct {
 	CollectorErrors []error
 }
 
-func (e requestExecutor) Execute(ctx context.Context, item domain.PlannedRun, server serverExecution, ordinal int) (requestResult, error) {
+type requestExecutor struct {
+	runner *Runner
+	client llamacpp.Client
+}
+
+func classifyRequest(ctx context.Context, statusCode int, responseText string, err error) (domain.RunStatus, string) {
+	if err != nil {
+		if ctx.Err() == context.DeadlineExceeded {
+			return domain.StatusTimeout, ctx.Err().Error()
+		}
+		return domain.StatusFailed, err.Error()
+	}
+	if statusCode == http.StatusOK {
+		return domain.StatusSuccess, ""
+	}
+	return llamacpp.ClassifyHTTPError(statusCode, responseText), responseText
+}
+
+func (r *Runner) parseRequestResult(
+	status domain.RunStatus,
+	responseBody map[string]any,
+	responseText string,
+	rawPath string,
+	elapsedSeconds float64,
+) (map[string]any, map[string]any) {
+	if status == domain.StatusSuccess && llamacpp.EndpointKind(r.Config) == "chat" {
+		return llamacpp.ParseChatCompletion(responseBody, elapsedSeconds, llamacpp.LogText(rawPath))
+	}
+	if status == domain.StatusSuccess {
+		return llamacpp.ParseCompletion(responseBody)
+	}
+	parsed := llamacpp.ParseLlamaOutput(responseText)
+	response := map[string]any{"content": responseBody["content"], "stop_type": responseBody["stop_type"], "truncated": responseBody["truncated"]}
+	return parsed, response
+}
+
+func (e requestExecutor) startCollectors(ctx context.Context, runDir string, baseURL string) func() []error {
+	interval := time.Duration(e.runner.Config.Run.MonitorIntervalSeconds * float64(time.Second))
+	collectCtx, cancelCollect := context.WithCancel(ctx)
+	errCh := make(chan error, 2)
+	go func() {
+		errCh <- metrics.SystemCollector{RunDir: runDir, Interval: interval}.Run(collectCtx)
+	}()
+	go func() {
+		errCh <- metrics.LlamaCollector{BaseURL: baseURL, RunDir: runDir, Interval: interval}.Run(collectCtx)
+	}()
+	return func() []error {
+		cancelCollect()
+		var errs []error
+		for range 2 {
+			if err := <-errCh; err != nil {
+				errs = append(errs, err)
+			}
+		}
+		return errs
+	}
+}
+
+// Execute sends a benchmark request to the server and records the results.
+func (e requestExecutor) Execute(
+	ctx context.Context,
+	item domain.PlannedRun,
+	server serverExecution,
+	ordinal int,
+) (requestResult, error) {
 	r := e.runner
 	runID := fmt.Sprintf("%d-%04d-%04d", time.Now().Unix(), item.ServerIndex, ordinal)
 	runDir := storage.RunDir(r.ResultsDir, runID)
@@ -53,7 +112,7 @@ func (e requestExecutor) Execute(ctx context.Context, item domain.PlannedRun, se
 	}
 
 	status, errText := classifyRequest(reqCtx, resp.StatusCode, resp.Text, requestErr)
-	parsed, response := parseRequestResult(r, status, resp.Body, resp.Text, server.RawPath, time.Since(start).Seconds())
+	parsed, response := r.parseRequestResult(status, resp.Body, resp.Text, server.RawPath, time.Since(start).Seconds())
 	duration := time.Since(start).Seconds()
 	summary := domain.RunSummary{
 		RunID:          runID,
@@ -95,51 +154,4 @@ func (e requestExecutor) Execute(ctx context.Context, item domain.PlannedRun, se
 		Duration:        duration,
 		CollectorErrors: collectorErrors,
 	}, nil
-}
-
-func (e requestExecutor) startCollectors(ctx context.Context, runDir string, baseURL string) func() []error {
-	interval := time.Duration(e.runner.Config.Run.MonitorIntervalSeconds * float64(time.Second))
-	collectCtx, cancelCollect := context.WithCancel(ctx)
-	errCh := make(chan error, 2)
-	go func() {
-		errCh <- metrics.SystemCollector{RunDir: runDir, Interval: interval}.Run(collectCtx)
-	}()
-	go func() {
-		errCh <- metrics.LlamaCollector{BaseURL: baseURL, RunDir: runDir, Interval: interval}.Run(collectCtx)
-	}()
-	return func() []error {
-		cancelCollect()
-		var errs []error
-		for range 2 {
-			if err := <-errCh; err != nil {
-				errs = append(errs, err)
-			}
-		}
-		return errs
-	}
-}
-
-func classifyRequest(ctx context.Context, statusCode int, responseText string, err error) (domain.RunStatus, string) {
-	if err != nil {
-		if ctx.Err() == context.DeadlineExceeded {
-			return domain.StatusTimeout, ctx.Err().Error()
-		}
-		return domain.StatusFailed, err.Error()
-	}
-	if statusCode == http.StatusOK {
-		return domain.StatusSuccess, ""
-	}
-	return llamacpp.ClassifyHTTPError(statusCode, responseText), responseText
-}
-
-func parseRequestResult(r *Runner, status domain.RunStatus, responseBody map[string]any, responseText string, rawPath string, elapsedSeconds float64) (map[string]any, map[string]any) {
-	if status == domain.StatusSuccess && llamacpp.EndpointKind(r.Config) == "chat" {
-		return llamacpp.ParseChatCompletion(responseBody, elapsedSeconds, llamacpp.LogText(rawPath))
-	}
-	if status == domain.StatusSuccess {
-		return llamacpp.ParseCompletion(responseBody)
-	}
-	parsed := llamacpp.ParseLlamaOutput(responseText)
-	response := map[string]any{"content": responseBody["content"], "stop_type": responseBody["stop_type"], "truncated": responseBody["truncated"]}
-	return parsed, response
 }

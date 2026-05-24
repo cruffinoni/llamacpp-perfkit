@@ -1,11 +1,13 @@
-package views
+package viewmodel
 
+// BuildInfoView holds build metadata displayed in the benchmark header.
 type BuildInfoView struct {
 	CommitShort string
 	Branch      string
 	Backend     string
 }
 
+// ProgressState tracks benchmark completion counts across servers and jobs.
 type ProgressState struct {
 	ServersCompleted   int
 	ServersTotal       int
@@ -15,6 +17,7 @@ type ProgressState struct {
 	CurrentPromptTotal int
 }
 
+// CurrentServerView describes the currently running server configuration.
 type CurrentServerView struct {
 	ID          string
 	ContextSize int
@@ -25,6 +28,7 @@ type CurrentServerView struct {
 	UBatchSize  int
 }
 
+// PromptJobView represents a single prompt profile's execution status.
 type PromptJobView struct {
 	Profile         string
 	Status          string
@@ -35,6 +39,7 @@ type PromptJobView struct {
 	MinVRAMMiB      *float64
 }
 
+// BenchmarkTUIState is the top-level application state for the TUI.
 type BenchmarkTUIState struct {
 	RunID               string
 	BuildInfo           BuildInfoView
@@ -49,10 +54,12 @@ type BenchmarkTUIState struct {
 	PromptJobs          []PromptJobView
 }
 
+// StateUpdate carries a transformation to apply to the TUI state.
 type StateUpdate struct {
 	Apply func(*BenchmarkTUIState)
 }
 
+// UpsertPrompt inserts or updates a prompt job entry in the state slice.
 func (s *BenchmarkTUIState) UpsertPrompt(job PromptJobView) {
 	for i := range s.PromptJobs {
 		if s.PromptJobs[i].Profile == job.Profile {

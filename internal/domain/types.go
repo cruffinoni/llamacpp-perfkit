@@ -5,6 +5,7 @@ import (
 	"fmt"
 )
 
+// RunStatus represents the status of a benchmark run.
 type RunStatus string
 
 const (
@@ -16,6 +17,7 @@ const (
 	StatusUnknown     RunStatus = "unknown"
 )
 
+// RunStatusInfo holds the detailed status flags for a benchmark run.
 type RunStatusInfo struct {
 	Success     bool    `json:"success"`
 	Failed      bool    `json:"failed,omitempty"`
@@ -25,6 +27,7 @@ type RunStatusInfo struct {
 	Error       *string `json:"error"`
 }
 
+// NewRunStatusInfo creates a RunStatusInfo from a status string and optional error text.
 func NewRunStatusInfo(status RunStatus, errText string) RunStatusInfo {
 	var errPtr *string
 	if errText != "" {
@@ -40,6 +43,7 @@ func NewRunStatusInfo(status RunStatus, errText string) RunStatusInfo {
 	}
 }
 
+// Kind returns the dominant RunStatus from the status flags.
 func (s RunStatusInfo) Kind() RunStatus {
 	switch {
 	case s.Success:
@@ -59,6 +63,7 @@ func (s RunStatusInfo) Kind() RunStatus {
 	}
 }
 
+// UnmarshalJSON implements the json.Unmarshaler interface for RunStatusInfo.
 func (s *RunStatusInfo) UnmarshalJSON(data []byte) error {
 	var status string
 	if err := json.Unmarshal(data, &status); err == nil {
@@ -74,6 +79,7 @@ func (s *RunStatusInfo) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// ServerConfig holds the llama.cpp server configuration parameters.
 type ServerConfig struct {
 	Model           string   `json:"model,omitempty"`
 	ContextSize     int      `json:"ctx,omitempty"`
@@ -94,6 +100,8 @@ type ServerConfig struct {
 	ShutdownTimeout int      `json:"-"`
 }
 
+// UnmarshalJSON implements the json.Unmarshaler interface for ServerConfig,
+// supporting the legacy context_size field.
 func (s *ServerConfig) UnmarshalJSON(data []byte) error {
 	type serverConfig ServerConfig
 	var raw struct {
@@ -110,12 +118,14 @@ func (s *ServerConfig) UnmarshalJSON(data []byte) error {
 	return nil
 }
 
+// PromptProfile defines a named prompt profile with its file path and index.
 type PromptProfile struct {
 	Name  string `json:"name"`
 	File  string `json:"file"`
 	Index int    `json:"index,omitempty"`
 }
 
+// BenchmarkJob describes a single benchmark job to execute.
 type BenchmarkJob struct {
 	PromptProfile PromptProfile `json:"prompt_profile"`
 	PromptFile    string        `json:"prompt_file"`
@@ -127,6 +137,7 @@ type BenchmarkJob struct {
 	ConfigHash    string        `json:"config_hash"`
 }
 
+// PlanAction represents the planned action for a run (run, reuse, or skip).
 type PlanAction string
 
 const (
@@ -135,6 +146,7 @@ const (
 	ActionSkip  PlanAction = "skip"
 )
 
+// PlannedRun describes a single planned run within a benchmark plan.
 type PlannedRun struct {
 	RunID       string       `json:"run_id"`
 	ConfigHash  string       `json:"config_hash"`
@@ -145,6 +157,7 @@ type PlannedRun struct {
 	ServerIndex int          `json:"server_index,omitempty"`
 }
 
+// BenchmarkPlan holds the complete benchmark plan with all planned runs.
 type BenchmarkPlan struct {
 	Mode                 string                 `json:"mode"`
 	MaxRuns              int                    `json:"max_runs"`
@@ -155,10 +168,11 @@ type BenchmarkPlan struct {
 	MaxRunsCapped        bool                   `json:"max_runs_capped"`
 	Skipped              []SkipReason           `json:"skipped,omitempty"`
 	Notes                []string               `json:"notes,omitempty"`
-	Planned              []PlannedRun           `json:"planned"`
+	Planned              []PlannedRun           `json:"planned,omitempty"`
 	Metadata             map[string]interface{} `json:"metadata,omitempty"`
 }
 
+// SkipReason describes why a particular configuration was skipped.
 type SkipReason struct {
 	Dimension string `json:"dimension,omitempty"`
 	Flag      string `json:"flag,omitempty"`
@@ -166,6 +180,7 @@ type SkipReason struct {
 	Reason    string `json:"reason"`
 }
 
+// BuildInfo contains build metadata for a llama.cpp binary.
 type BuildInfo struct {
 	CommitShort string `json:"commit_short,omitempty"`
 	Commit      string `json:"commit,omitempty"`
@@ -175,6 +190,7 @@ type BuildInfo struct {
 	Error       string `json:"error,omitempty"`
 }
 
+// RunSummary summarizes a completed benchmark run.
 type RunSummary struct {
 	RunID          string         `json:"run_id"`
 	BatchID        string         `json:"batch_id,omitempty"`
@@ -199,6 +215,7 @@ type RunSummary struct {
 	Seed           *int           `json:"seed,omitempty"`
 }
 
+// SystemMetricSample represents a single system metric measurement.
 type SystemMetricSample struct {
 	Time       string   `json:"time"`
 	GPUPowerW  *float64 `json:"gpu_power_w,omitempty"`
@@ -210,6 +227,7 @@ type SystemMetricSample struct {
 	RAMUsed    *float64 `json:"ram_used_mib,omitempty"`
 }
 
+// LlamaCppMetricSample represents a single llama.cpp performance metric measurement.
 type LlamaCppMetricSample struct {
 	Time             string   `json:"time"`
 	PromptTokens     *float64 `json:"prompt_tokens,omitempty"`
@@ -225,6 +243,7 @@ type LlamaCppMetricSample struct {
 	TotalTimeSeconds *float64 `json:"total_time_seconds,omitempty"`
 }
 
+// LoadedRun holds the full data for a loaded run, including metrics and summaries.
 type LoadedRun struct {
 	Summary       RunSummary
 	SystemMetrics []SystemMetricSample
@@ -234,6 +253,7 @@ type LoadedRun struct {
 	Directory     string
 }
 
+// SystemSummary summarizes system-level metrics collected during a run.
 type SystemSummary struct {
 	PeakVRAMMiB     *float64
 	MinVRAMFreeMiB  *float64
@@ -245,6 +265,7 @@ type SystemSummary struct {
 	PeakGPUTempC    *float64
 }
 
+// LlamaSummary summarizes llama.cpp performance metrics collected during a run.
 type LlamaSummary struct {
 	GenerationTokS  *float64
 	PromptEvalTokS  *float64
@@ -254,10 +275,12 @@ type LlamaSummary struct {
 	TTFTSeconds     *float64
 }
 
+// Ptr returns a pointer to the given value.
 func Ptr[T any](v T) *T {
 	return &v
 }
 
+// DerefString safely dereferences a string pointer, returning an empty string for nil.
 func DerefString(v *string) string {
 	if v == nil {
 		return ""
@@ -265,6 +288,7 @@ func DerefString(v *string) string {
 	return *v
 }
 
+// IntValue returns the string representation of an integer pointer, or "-" if nil.
 func IntValue(v *int) string {
 	if v == nil {
 		return "-"
