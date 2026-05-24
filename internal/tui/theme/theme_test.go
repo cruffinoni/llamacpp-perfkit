@@ -91,6 +91,16 @@ func TestSolarizedDarkConstants(t *testing.T) {
 	}
 }
 
+func TestProgressStyles(t *testing.T) {
+	s := NewStyles(SolarizedDark)
+	if s.ProgressFilled.GetForeground() != lipgloss.Color(SolarizedDark.Info) {
+		t.Error("ProgressFilled should use Info theme color")
+	}
+	if s.ProgressEmpty.GetForeground() != lipgloss.Color(SolarizedDark.Muted) {
+		t.Error("ProgressEmpty should use Muted theme color")
+	}
+}
+
 func TestNewStylesWithCustomTheme(t *testing.T) {
 	custom := Theme{
 		Background: "#000000",

@@ -28,46 +28,23 @@ type Theme struct {
 	VramUsedHigh string
 }
 
-var SolarizedDark = Theme{
-	Background: "#002b36",
-	Panel:      "#073642",
-	Border:     "#586e75",
-	Text:       "#eee8d5",
-	Title:      "#fdf6e3",
-	Muted:      "#586e75",
-	Accent:     "#b58900",
-
-	Success: "#bad600",
-	Running: "#268bd2",
-	Warning: "#d6a200",
-	Error:   "#e02f30",
-	Info:    "#268bd2",
-
-	ProgressLow:  "#4e5900",
-	ProgressMid:  "#d6a200",
-	ProgressHigh: "#bad600",
-
-	VramFreeLow:  "#4e5900",
-	VramFreeHigh: "#bad600",
-	VramUsedLow:  "#6e1718",
-	VramUsedHigh: "#e02f30",
-}
-
 // Styles encapsulates all lipgloss styling primitives.
 type Styles struct {
-	Base       lipgloss.Style
-	Panel      lipgloss.Style
-	Title      lipgloss.Style
-	Label      lipgloss.Style
-	Muted      lipgloss.Style
-	Accent     lipgloss.Style
-	Success    lipgloss.Style
-	Running    lipgloss.Style
-	Warning    lipgloss.Style
-	Error      lipgloss.Style
-	Info       lipgloss.Style
-	TextBold   lipgloss.Style
-	StatusLine lipgloss.Style
+	Base           lipgloss.Style
+	Panel          lipgloss.Style
+	Title          lipgloss.Style
+	Label          lipgloss.Style
+	Muted          lipgloss.Style
+	Accent         lipgloss.Style
+	Success        lipgloss.Style
+	Running        lipgloss.Style
+	Warning        lipgloss.Style
+	Error          lipgloss.Style
+	Info           lipgloss.Style
+	TextBold       lipgloss.Style
+	StatusLine     lipgloss.Style
+	ProgressFilled lipgloss.Style
+	ProgressEmpty  lipgloss.Style
 
 	PanelBg lipgloss.Color
 	BaseBg  lipgloss.Color
@@ -93,10 +70,14 @@ func NewStyles(t Theme) Styles {
 		Info:       lipgloss.NewStyle().Foreground(lipgloss.Color(t.Info)),
 		TextBold:   lipgloss.NewStyle().Foreground(lipgloss.Color(t.Text)).Bold(true),
 		StatusLine: lipgloss.NewStyle().Foreground(lipgloss.Color(t.Muted)).Background(lipgloss.Color(t.Background)),
-		PanelBg:    lipgloss.Color(t.Panel),
-		BaseBg:     lipgloss.Color(t.Background),
-		TextFg:     lipgloss.Color(t.Text),
-		MutedFg:    lipgloss.Color(t.Muted),
+
+		ProgressFilled: lipgloss.NewStyle().Foreground(lipgloss.Color(t.Info)).Background(lipgloss.Color(t.Background)),
+		ProgressEmpty:  lipgloss.NewStyle().Foreground(lipgloss.Color(t.Muted)).Background(lipgloss.Color(t.Background)),
+
+		PanelBg: lipgloss.Color(t.Panel),
+		BaseBg:  lipgloss.Color(t.Background),
+		TextFg:  lipgloss.Color(t.Text),
+		MutedFg: lipgloss.Color(t.Muted),
 	}
 }
 
