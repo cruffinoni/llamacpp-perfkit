@@ -4,7 +4,8 @@ import (
 	"context"
 	"errors"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
+
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/components"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/viewmodel"

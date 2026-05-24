@@ -6,7 +6,7 @@ import (
 	"sync"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
+	tea "charm.land/bubbletea/v2"
 
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/components"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/sim"
@@ -25,7 +25,7 @@ const (
 	keyCtrlC  = "ctrl+c"
 	keyQ      = "q"
 	keyEsc    = "esc"
-	keySpace  = " "
+	keySpace  = "space"
 	keyR      = "r"
 	keyRUpper = "R"
 )
@@ -119,7 +119,7 @@ func NewProgram(
 		updates:  updates,
 		cancel:   cancel,
 		barStyle: barStyle,
-	}, tea.WithContext(ctx), tea.WithAltScreen())
+	}, tea.WithContext(ctx))
 }
 
 // Init initialises the bubble tea model with update-waiting and tick commands.
@@ -133,7 +133,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case tea.WindowSizeMsg:
 		m.width = t.Width
 		m.height = t.Height
-	case tea.KeyMsg:
+	case tea.KeyPressMsg:
 		switch t.String() {
 		case keyCtrlC, keyQ, keyEsc:
 			return m, tea.Quit
@@ -170,11 +170,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	return m, nil
 }
 
-// View renders the current TUI state as a string.
-func (m model) View() string {
+// View renders the current TUI state as a tea.View.
+func (m model) View() tea.View {
 	content := views.Layout(m.state, m.styles, 0, m.barStyle)
 	if m.width == 0 {
-		return content
+		v := tea.NewView(content)
+		v.AltScreen = true
+		return v
 	}
 
 	lines := strings.Split(content, "\n")
@@ -189,5 +191,7 @@ func (m model) View() string {
 	for i := len(lines); i < m.height; i++ {
 		lines = append(lines, bgLine)
 	}
-	return strings.Join(lines, "\n")
+	v := tea.NewView(strings.Join(lines, "\n"))
+	v.AltScreen = true
+	return v
 }
