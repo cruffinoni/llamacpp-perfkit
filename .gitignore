@@ -23,3 +23,5 @@ results/**
 runs/
 
 images/
+
+vendor/**

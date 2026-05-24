@@ -1,20 +1,11 @@
 package cli
 
 import (
-	"context"
-	"fmt"
-	"io"
-	"os"
+	"github.com/spf13/cobra"
 
 	"github.com/cruffinoni/llamacpp-perfkit/internal/config"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/report"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/runner"
-	"github.com/cruffinoni/llamacpp-perfkit/internal/tui"
-	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/app"
-	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/components"
-	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/sim"
-	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/theme"
-	"github.com/spf13/cobra"
 )
 
 func reportSummaryCommand() *cobra.Command {
@@ -122,70 +113,6 @@ func runCommand() *cobra.Command {
 	cmd.Flags().BoolVarP(&opts.Force, "force", "f", false, "Force rerun of all selected configs.")
 	cmd.Flags().BoolVar(&opts.DryRun, "dry-run", false, "Print planned server commands without launching models.")
 	return cmd
-}
-
-func devCommand() *cobra.Command {
-	var (
-		barStyle string
-		loop     bool
-	)
-	cmd := &cobra.Command{Use: "dev", Short: "Development helpers."}
-	tuiCmd := &cobra.Command{
-		Use:   "tui",
-		Short: "Run an animated fake benchmark simulation in the TUI.",
-		RunE: func(cmd *cobra.Command, _ []string) error {
-			if barStyle == "all" {
-				return renderAllStyles(cmd.OutOrStdout())
-			}
-
-			parsed, err := components.ParseProgressBarStyle(barStyle)
-			if err != nil {
-				return err
-			}
-
-			if os.Getenv("LLAMACPP_PERFKIT_TUI_ONCE") == "1" {
-				fmt.Fprintln(cmd.OutOrStdout(), "dev tui simulation")
-				return nil
-			}
-			return runSimulation(cmd.Context(), loop, parsed)
-		},
-	}
-	tuiCmd.Flags().StringVar(&barStyle, "bar-style", "dot",
-		"Progress bar style: block, line, dot, segmented, braille, or all (preview)")
-	tuiCmd.Flags().BoolVar(&loop, "loop", false, "Restart simulation when complete.")
-	cmd.AddCommand(tuiCmd)
-	return cmd
-}
-
-func runSimulation(ctx context.Context, loop bool, barStyle components.ProgressBarStyle) error {
-	ctrl := make(sim.Controller, 8)
-	tui.SetSimController(ctrl)
-	defer tui.ClearSimController()
-
-	s := sim.New(sim.MixedScenario(), loop)
-	return app.Run(ctx, s.InitialState(), s.BenchmarkFunc(ctrl), barStyle)
-}
-
-// renderAllStyles prints a preview of all supported progress bar styles.
-func renderAllStyles(w io.Writer) error {
-	s := theme.NewStyles(theme.SolarizedDark)
-	done, total := 14, 96
-
-	styles := []components.ProgressBarStyle{
-		components.ProgressBarStyleBlock,
-		components.ProgressBarStyleLine,
-		components.ProgressBarStyleDot,
-		components.ProgressBarStyleSegmented,
-		components.ProgressBarStyleBraille,
-	}
-
-	fmt.Fprintln(w, "Progress style preview")
-	for _, style := range styles {
-		label := fmt.Sprintf("%-10s", style.String())
-		bar := components.ProgressBar(s, style, done, total, 30)
-		fmt.Fprintf(w, "%s %s %d/%d\n", label, bar, done, total)
-	}
-	return nil
 }
 
 // NewRootCommand creates the root CLI command for the application.

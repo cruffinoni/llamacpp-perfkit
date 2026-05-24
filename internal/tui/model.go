@@ -2,7 +2,6 @@ package tui
 
 import (
 	"context"
-	"strings"
 	"sync"
 	"time"
 
@@ -64,31 +63,7 @@ type model struct {
 	cancel   context.CancelFunc
 	done     bool
 	err      error
-	width    int
-	height   int
 	barStyle components.ProgressBarStyle
-}
-
-// visibleWidth returns the terminal column width of s, stripping ANSI escape
-// sequences and counting Unicode runes (each rune = 1 column for our purposes;
-// box-drawing chars are single-column in modern terminals).
-func visibleWidth(s string) int {
-	w := 0
-	esc := false
-	for _, r := range s {
-		if esc {
-			if (r >= 'A' && r <= 'Z') || (r >= 'a' && r <= 'z') {
-				esc = false
-			}
-			continue
-		}
-		if r == '\x1b' {
-			esc = true
-			continue
-		}
-		w++
-	}
-	return w
 }
 
 func tick() tea.Cmd {
@@ -130,9 +105,6 @@ func (m model) Init() tea.Cmd {
 // Update handles messages for the bubble tea model and returns an updated model.
 func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	switch t := msg.(type) {
-	case tea.WindowSizeMsg:
-		m.width = t.Width
-		m.height = t.Height
 	case tea.KeyPressMsg:
 		switch t.String() {
 		case keyCtrlC, keyQ, keyEsc:
@@ -172,26 +144,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the current TUI state as a tea.View.
 func (m model) View() tea.View {
-	content := views.Layout(m.state, m.styles, 0, m.barStyle)
-	if m.width == 0 {
-		v := tea.NewView(content)
-		v.AltScreen = true
-		return v
-	}
-
-	lines := strings.Split(content, "\n")
-	padStyle := m.styles.Base
-	bgLine := padStyle.Width(m.width).Render("")
-	for i, line := range lines {
-		vis := visibleWidth(line)
-		if vis < m.width {
-			lines[i] = line + padStyle.Render(strings.Repeat(" ", m.width-vis))
-		}
-	}
-	for i := len(lines); i < m.height; i++ {
-		lines = append(lines, bgLine)
-	}
-	v := tea.NewView(strings.Join(lines, "\n"))
+	v := tea.NewView(views.Layout(m.state, m.styles, m.barStyle))
 	v.AltScreen = true
+	v.BackgroundColor = m.styles.Base.GetBackground()
 	return v
 }

@@ -170,12 +170,8 @@ func PromptTable(state viewmodel.BenchmarkTUIState, s theme.Styles) string {
 }
 
 // Layout joins all panels vertically with left alignment.
-func Layout(state viewmodel.BenchmarkTUIState, s theme.Styles, width int, barStyle components.ProgressBarStyle) string {
-	base := s.Base
-	if width > 0 {
-		base = base.Width(width)
-	}
-	return base.Render(lipgloss.JoinVertical(lipgloss.Left,
+func Layout(state viewmodel.BenchmarkTUIState, s theme.Styles, barStyle components.ProgressBarStyle) string {
+	return s.Base.Render(lipgloss.JoinVertical(lipgloss.Left,
 		BenchmarkHeader(state, s),
 		ProgressBlock(state, s, barStyle),
 		CurrentServerBlock(state, s),
