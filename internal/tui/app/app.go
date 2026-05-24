@@ -6,6 +6,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui"
+	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/components"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/viewmodel"
 )
 
@@ -15,12 +16,13 @@ func Run(
 	ctx context.Context,
 	initial viewmodel.BenchmarkTUIState,
 	benchmark func(context.Context, chan<- viewmodel.StateUpdate) error,
+	barStyle components.ProgressBarStyle,
 ) error {
 	runCtx, cancel := context.WithCancel(ctx)
 	defer cancel()
 	updates := make(chan viewmodel.StateUpdate, 128)
 	errCh := make(chan error, 1)
-	program := tui.NewProgram(runCtx, initial, updates, cancel)
+	program := tui.NewProgram(runCtx, initial, updates, cancel, barStyle)
 	go func() {
 		defer close(updates)
 		err := benchmark(runCtx, updates)

@@ -4,6 +4,7 @@ import (
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
+
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/components"
 	tuifmt "github.com/cruffinoni/llamacpp-perfkit/internal/tui/format"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/theme"
@@ -77,7 +78,7 @@ func BenchmarkHeader(state viewmodel.BenchmarkTUIState, s theme.Styles) string {
 }
 
 // ProgressBlock renders the progress panel with 3 metric bars.
-func ProgressBlock(state viewmodel.BenchmarkTUIState, s theme.Styles) string {
+func ProgressBlock(state viewmodel.BenchmarkTUIState, s theme.Styles, barStyle components.ProgressBarStyle) string {
 	p := state.Progress
 
 	summary := newLine(s).
@@ -93,7 +94,7 @@ func ProgressBlock(state viewmodel.BenchmarkTUIState, s theme.Styles) string {
 		return newLine(s).
 			Styled(s.Label, label).
 			Raw(" ").
-			Raw(components.ProgressBar(s, done, total, 30)).
+			Raw(components.ProgressBar(s, barStyle, done, total, 30)).
 			Rawf(" %d/%d%s", done, max(total, 1), suffix).
 			Render()
 	}
@@ -169,14 +170,14 @@ func PromptTable(state viewmodel.BenchmarkTUIState, s theme.Styles) string {
 }
 
 // Layout joins all panels vertically with left alignment.
-func Layout(state viewmodel.BenchmarkTUIState, s theme.Styles, width int) string {
+func Layout(state viewmodel.BenchmarkTUIState, s theme.Styles, width int, barStyle components.ProgressBarStyle) string {
 	base := s.Base
 	if width > 0 {
 		base = base.Width(width)
 	}
 	return base.Render(lipgloss.JoinVertical(lipgloss.Left,
 		BenchmarkHeader(state, s),
-		ProgressBlock(state, s),
+		ProgressBlock(state, s, barStyle),
 		CurrentServerBlock(state, s),
 		PromptTable(state, s),
 		s.StatusLine.Render(state.StatusMessage),

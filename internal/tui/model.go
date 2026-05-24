@@ -3,9 +3,12 @@ package tui
 import (
 	"context"
 	"strings"
+	"sync"
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/components"
+	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/sim"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/theme"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/viewmodel"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/views"
@@ -18,20 +21,51 @@ type doneMsg struct {
 type tickMsg struct{}
 
 const (
-	keyCtrlC = "ctrl+c"
-	keyQ     = "q"
-	keyEsc   = "esc"
+	keyCtrlC  = "ctrl+c"
+	keyQ      = "q"
+	keyEsc    = "esc"
+	keySpace  = " "
+	keyR      = "r"
+	keyRUpper = "R"
 )
 
+var (
+	activeSimMu   sync.Mutex
+	activeSimCtrl sim.Controller
+)
+
+// SetSimController registers a controller for the running simulation. The TUI
+// model sends pause/reset commands on this channel when the user presses space
+// or r. Call ClearSimController when the simulation ends.
+func SetSimController(ctrl sim.Controller) {
+	activeSimMu.Lock()
+	activeSimCtrl = ctrl
+	activeSimMu.Unlock()
+}
+
+// ClearSimController removes the registered simulation controller.
+func ClearSimController() {
+	activeSimMu.Lock()
+	activeSimCtrl = nil
+	activeSimMu.Unlock()
+}
+
+func getSimController() sim.Controller {
+	activeSimMu.Lock()
+	defer activeSimMu.Unlock()
+	return activeSimCtrl
+}
+
 type model struct {
-	state   viewmodel.BenchmarkTUIState
-	styles  theme.Styles
-	updates <-chan viewmodel.StateUpdate
-	cancel  context.CancelFunc
-	done    bool
-	err     error
-	width   int
-	height  int
+	state    viewmodel.BenchmarkTUIState
+	styles   theme.Styles
+	updates  <-chan viewmodel.StateUpdate
+	cancel   context.CancelFunc
+	done     bool
+	err      error
+	width    int
+	height   int
+	barStyle components.ProgressBarStyle
 }
 
 // visibleWidth returns the terminal column width of s, stripping ANSI escape
@@ -76,8 +110,15 @@ func NewProgram(
 	state viewmodel.BenchmarkTUIState,
 	updates <-chan viewmodel.StateUpdate,
 	cancel context.CancelFunc,
+	barStyle components.ProgressBarStyle,
 ) *tea.Program {
-	return tea.NewProgram(model{state: state, styles: theme.NewStyles(theme.SolarizedDark), updates: updates, cancel: cancel}, tea.WithContext(ctx), tea.WithAltScreen())
+	return tea.NewProgram(model{
+		state:    state,
+		styles:   theme.NewStyles(theme.SolarizedDark),
+		updates:  updates,
+		cancel:   cancel,
+		barStyle: barStyle,
+	}, tea.WithContext(ctx), tea.WithAltScreen())
 }
 
 // Init initialises the bubble tea model with update-waiting and tick commands.
@@ -92,8 +133,23 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 	case tea.KeyMsg:
-		if msg.String() == keyCtrlC || msg.String() == keyQ || msg.String() == keyEsc {
+		switch msg.String() {
+		case keyCtrlC, keyQ, keyEsc:
 			return m, tea.Quit
+		case keySpace:
+			if ctrl := getSimController(); ctrl != nil {
+				select {
+				case ctrl <- sim.TogglePause:
+				default:
+				}
+			}
+		case keyR, keyRUpper:
+			if ctrl := getSimController(); ctrl != nil {
+				select {
+				case ctrl <- sim.Reset:
+				default:
+				}
+			}
 		}
 	case viewmodel.StateUpdate:
 		if msg.Apply != nil {
@@ -115,7 +171,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the current TUI state as a string.
 func (m model) View() string {
-	content := views.Layout(m.state, m.styles, 0)
+	content := views.Layout(m.state, m.styles, 0, m.barStyle)
 	if m.width == 0 {
 		return content
 	}
