@@ -2,55 +2,43 @@
 
 ## Scope
 
-This is a terminal-first Python toolkit for benchmarking llama.cpp MoE GGUF settings.
+This is a terminal-first Go toolkit for benchmarking llama.cpp MoE GGUF settings.
 
-Core code lives in `src/llamacpp_perfkit/`:
-- `cli.py`: Typer CLI
-- `planner.py`: benchmark plan generation
-- `server_runner.py`: llama-server execution
-- `reporting.py`: result summaries
-- `benchlib.py`: shared helpers
+Core code lives in `internal/`:
+- `cli/`: Cobra CLI
+- `runner/`: benchmark execution
+- `tui/`: terminal UI rendering
+- `report/`: result summaries and reporting
+- `config/`: configuration loading
+- `bench/`: benchmark planning
+- `llamacpp/`: llama.cpp integration
 
 Configuration presets live in `config/`. Prompts live in `prompts/`.
 
-Treat `results/` and `logs/` as generated output unless the task explicitly involves benchmark artifacts.
+Treat `runs/` and `logs/` as generated output unless the task explicitly involves benchmark artifacts.
 
-Do not edit documentation files, including `README.md`, unless explicitly asked.
+Do not edit documentation files, including README.md, unless explicitly asked.
 
 ## Commands
 
 Use default config behavior unless a non-default config is required.
 
-- `make test` to run type checking, linting, and unit tests
-- `make typecheck` to run only mypy
-- `make lint` to run only ruff
-- `lcpk detect`: inspect llama.cpp binaries and write feature output.
-- `lcpk bench --dry-run`: validate planning without launching models.
-- `lcpk bench --mode smoke`: run the smallest practical benchmark.
-- `lcpk bench --retry-failed`: retry failed, OOM, timeout, or unsupported runs.
-- `lcpk report summary --results results/runs.jsonl`: summarize runs.
-- `lcpk report recommend --results results/runs.jsonl`: print measured command recommendations.
+- `make test` to run tests
+- `llama-cpp-perfkit run <config>`: execute a benchmark matrix
+- `llama-cpp-perfkit report summary`: summarize benchmark runs
+- `llama-cpp-perfkit dev tui`: render a static fake TUI
 
-Use `--config` only for temporary, alternate, or user-specified config files.
-
-## Style
-
-Use Python 3, four-space indentation, Typer for CLI entrypoints, `snake_case` names, `pathlib.Path`, and structured JSON/YAML handling.
-
-Keep functions small and use explicit dictionary keys matching benchmark result fields.
+Use `--mode`, `--max-runs`, `--retry-failed`, and `--dry-run` flags as needed.
 
 ## Testing
 
-Run `make test` to validate changes. This runs mypy, ruff, and pytest sequentially.
-
-The type checker (mypy) is configured for strict mode with exceptions for dynamic dict patterns.
-The linter (ruff) is configured for PEP 8, import sorting, naming conventions, and pyupgrade.
+Run `make test` to validate changes.
 
 ## Results
 
-Benchmark runs append to `results/runs.jsonl`; do not delete older rows unless explicitly asked. `results/runs.csv` is regenerated from the JSONL after benchmark runs.
+Benchmark runs are stored in `runs/`; do not delete older data unless explicitly asked.
 
-When `budget.reuse_existing_results: true`, successful matching configs may be reused. Failed, OOM, timeout, or unsupported rows can be retried with `--retry-failed`.
+When `budget.reuse_existing_results: true` in a config, successful matching configs may be reused. Failed, OOM, timeout, or unsupported configs can be retried with `--retry-failed`.
 
 ## Security
 
