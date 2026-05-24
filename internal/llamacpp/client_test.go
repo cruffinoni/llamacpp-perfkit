@@ -7,6 +7,9 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 func TestClientJSONHandlesStatusBodyAndErrors(t *testing.T) {
@@ -19,23 +22,15 @@ func TestClientJSONHandlesStatusBodyAndErrors(t *testing.T) {
 	defer server.Close()
 
 	resp, err := NewClient(server.Client()).JSON(context.Background(), http.MethodPost, server.URL, map[string]any{"prompt": "hello"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if resp.StatusCode != http.StatusTeapot {
-		t.Fatalf("status = %d", resp.StatusCode)
-	}
-	if resp.Body["error"] != "short and stout" || !strings.Contains(resp.Text, "short and stout") {
-		t.Fatalf("unexpected response: %+v text=%q", resp.Body, resp.Text)
-	}
-	if gotContentType != "application/json" {
-		t.Fatalf("content type = %q", gotContentType)
-	}
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusTeapot, resp.StatusCode)
+	assert.Equal(t, "short and stout", resp.Body["error"])
+	assert.Contains(t, resp.Text, "short and stout")
+	assert.Equal(t, "application/json", gotContentType)
 
 	_, err = NewClient(server.Client()).JSON(context.Background(), http.MethodGet, "://bad-url", nil)
-	if err == nil || !strings.Contains(err.Error(), "build GET request") {
-		t.Fatalf("expected request build context, got %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "build GET request")
 }
 
 func TestWaitHealthySuccessTimeoutAndCancellation(t *testing.T) {
@@ -43,24 +38,104 @@ func TestWaitHealthySuccessTimeoutAndCancellation(t *testing.T) {
 		_, _ = w.Write([]byte(`{"status":"ok"}`))
 	}))
 	defer healthy.Close()
-	if err := NewClient(healthy.Client()).WaitHealthy(context.Background(), healthy.URL, time.Second); err != nil {
-		t.Fatal(err)
-	}
+
+	err := NewClient(healthy.Client()).WaitHealthy(context.Background(), healthy.URL, time.Second)
+	require.NoError(t, err)
 
 	unhealthy := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
 		w.WriteHeader(http.StatusServiceUnavailable)
 		_, _ = w.Write([]byte(`{"status":"loading"}`))
 	}))
 	defer unhealthy.Close()
-	err := NewClient(unhealthy.Client()).WaitHealthy(context.Background(), unhealthy.URL, 10*time.Millisecond)
-	if err == nil || !strings.Contains(err.Error(), "server health timeout") {
-		t.Fatalf("expected timeout, got %v", err)
-	}
+
+	err = NewClient(unhealthy.Client()).WaitHealthy(context.Background(), unhealthy.URL, 10*time.Millisecond)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "server health timeout")
 
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	err = NewClient(unhealthy.Client()).WaitHealthy(ctx, unhealthy.URL, time.Second)
-	if err == nil || !strings.Contains(err.Error(), "context canceled") {
-		t.Fatalf("expected cancellation, got %v", err)
-	}
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "context canceled")
+}
+
+func TestClientJSONInvalidJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`not-json`))
+	}))
+	defer server.Close()
+
+	resp, err := NewClient(server.Client()).JSON(context.Background(), http.MethodGet, server.URL, nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Equal(t, "not-json", resp.Text)
+	assert.Empty(t, resp.Body)
+}
+
+func TestClientJSONServer500(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusInternalServerError)
+		_, _ = w.Write([]byte(`{"error":"internal"}`))
+	}))
+	defer server.Close()
+
+	resp, err := NewClient(server.Client()).JSON(context.Background(), http.MethodGet, server.URL, nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusInternalServerError, resp.StatusCode)
+	assert.Equal(t, "internal", resp.Body["error"])
+}
+
+func TestClientJSONContextCancelled(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		// Hang
+	}))
+	defer server.Close()
+
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	_, err := NewClient(server.Client()).JSON(ctx, http.MethodGet, server.URL, nil)
+	require.Error(t, err)
+	assert.True(t, strings.Contains(err.Error(), "canceled") || strings.Contains(err.Error(), "connect"), "expected context canceled, got: %v", err)
+}
+
+func TestClientJSONEmptyPayload(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		assert.Equal(t, "", r.Header.Get("Content-Type"))
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"ok": true}`))
+	}))
+	defer server.Close()
+
+	resp, err := NewClient(server.Client()).JSON(context.Background(), http.MethodGet, server.URL, nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+}
+
+func TestClientJSONEmptyResponse(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+	}))
+	defer server.Close()
+
+	resp, err := NewClient(server.Client()).JSON(context.Background(), http.MethodGet, server.URL, nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, resp.StatusCode)
+	assert.Empty(t, resp.Text)
+	assert.Empty(t, resp.Body)
+}
+
+func TestHTTPJSONConvenience(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, _ *http.Request) {
+		w.WriteHeader(http.StatusOK)
+		_, _ = w.Write([]byte(`{"value": 42}`))
+	}))
+	defer server.Close()
+
+	status, body, text, err := HTTPJSON(context.Background(), http.MethodGet, server.URL, nil)
+	require.NoError(t, err)
+	assert.Equal(t, http.StatusOK, status)
+	assert.Equal(t, float64(42), body["value"])
+	assert.Contains(t, text, "42")
 }
