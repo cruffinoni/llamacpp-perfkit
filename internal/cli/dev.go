@@ -117,6 +117,16 @@ func renderProgressPreview(w io.Writer, opts progressPreviewOptions) error {
 	if err := validateProgressPreviewOptions(opts); err != nil {
 		return err
 	}
+	if _, ok := w.(*os.File); !ok {
+		model := newProgressPreviewModel(opts)
+		for model.completed < model.opts.MaxSteps {
+			updated, _ := model.Update(progressPreviewTickMsg{})
+			model = updated.(progressPreviewModel)
+		}
+		_, err := io.WriteString(w, model.View().Content)
+		return err
+	}
+
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
 	defer stop()
 
@@ -126,7 +136,6 @@ func renderProgressPreview(w io.Writer, opts progressPreviewOptions) error {
 		tea.WithContext(ctx),
 		tea.WithInput(nil),
 		tea.WithOutput(w),
-		tea.WithWindowSize(80, 24),
 		tea.WithoutSignals(),
 	)
 	_, err := program.Run()

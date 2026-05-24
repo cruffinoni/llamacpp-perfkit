@@ -1,6 +1,7 @@
 package views
 
 import (
+	"fmt"
 	"strings"
 
 	"github.com/charmbracelet/lipgloss"
@@ -10,6 +11,26 @@ import (
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/theme"
 	"github.com/cruffinoni/llamacpp-perfkit/internal/tui/viewmodel"
 )
+
+const (
+	// MinTerminalWidth is the minimum terminal width supported by the dashboard.
+	MinTerminalWidth = 92
+	// MinTerminalHeight is the minimum terminal height supported by the dashboard.
+	MinTerminalHeight = 20
+)
+
+// TerminalSize describes the terminal dimensions available to the dashboard.
+type TerminalSize struct {
+	Width  int
+	Height int
+}
+
+// LayoutOptions groups the rendering dependencies for the dashboard layout.
+type LayoutOptions struct {
+	Styles   theme.Styles
+	BarStyle components.ProgressBarStyle
+	Size     TerminalSize
+}
 
 func or(value, fallback string) string {
 	if value == "" {
@@ -169,13 +190,37 @@ func PromptTable(state viewmodel.BenchmarkTUIState, s theme.Styles) string {
 	return t.Render()
 }
 
+func terminalSizeSupported(size TerminalSize) bool {
+	return size.Width >= MinTerminalWidth && size.Height >= MinTerminalHeight
+}
+
+func unsupportedTerminalSize(size TerminalSize, s theme.Styles) string {
+	message := fmt.Sprintf(
+		"Terminal size unsupported.\nNeed at least %dx%d, got %dx%d.",
+		MinTerminalWidth,
+		MinTerminalHeight,
+		size.Width,
+		size.Height,
+	)
+	return s.Base.Render(message)
+}
+
+func centerComponent(width int, component string) string {
+	return lipgloss.PlaceHorizontal(width, lipgloss.Center, component)
+}
+
 // Layout joins all panels vertically with left alignment.
-func Layout(state viewmodel.BenchmarkTUIState, s theme.Styles, barStyle components.ProgressBarStyle) string {
-	return s.Base.Render(lipgloss.JoinVertical(lipgloss.Left,
-		BenchmarkHeader(state, s),
-		ProgressBlock(state, s, barStyle),
-		CurrentServerBlock(state, s),
-		PromptTable(state, s),
-		s.StatusLine.Render(state.StatusMessage),
-	))
+func Layout(state viewmodel.BenchmarkTUIState, opts LayoutOptions) string {
+	if !terminalSizeSupported(opts.Size) {
+		return unsupportedTerminalSize(opts.Size, opts.Styles)
+	}
+
+	return opts.Styles.Base.Render(
+		lipgloss.JoinVertical(lipgloss.Left,
+			centerComponent(opts.Size.Width, BenchmarkHeader(state, opts.Styles)),
+			ProgressBlock(state, opts.Styles, opts.BarStyle),
+			CurrentServerBlock(state, opts.Styles),
+			PromptTable(state, opts.Styles),
+			opts.Styles.StatusLine.Render(state.StatusMessage),
+		))
 }

@@ -64,6 +64,8 @@ type model struct {
 	done     bool
 	err      error
 	barStyle components.ProgressBarStyle
+	width    int
+	height   int
 }
 
 func tick() tea.Cmd {
@@ -129,6 +131,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			t.Apply(&m.state)
 		}
 		return m, waitUpdate(m.updates)
+	case tea.WindowSizeMsg:
+		m.width = t.Width
+		m.height = t.Height
+		return m, nil
 	case doneMsg:
 		m.done = true
 		m.err = t.err
@@ -144,7 +150,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 // View renders the current TUI state as a tea.View.
 func (m model) View() tea.View {
-	v := tea.NewView(views.Layout(m.state, m.styles, m.barStyle))
+	opts := views.LayoutOptions{
+		Styles:   m.styles,
+		BarStyle: m.barStyle,
+		Size:     views.TerminalSize{Width: m.width, Height: m.height},
+	}
+	v := tea.NewView(views.Layout(m.state, opts))
 	v.AltScreen = true
 	v.BackgroundColor = m.styles.Base.GetBackground()
 	return v
