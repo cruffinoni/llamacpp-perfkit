@@ -123,6 +123,6 @@ func NewRootCommand() *cobra.Command {
 		SilenceUsage:  true,
 		SilenceErrors: true,
 	}
-	root.AddCommand(runCommand(), reportCommand(), devCommand())
+	root.AddCommand(runCommand(), reportCommand(), devCommand(), tokenizeCommand())
 	return root
 }
